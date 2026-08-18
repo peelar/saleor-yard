@@ -1,6 +1,6 @@
-<p align="center">
+<div align="center">
   <img src="docs/assets/saleor-sandbox-logo.png" width="184" alt="Saleor Sandbox logo">
-</p>
+</div>
 
 <h1 align="center">Saleor Sandbox</h1>
 
