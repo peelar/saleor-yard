@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { FactoryError } from "../../domain/errors.js";
+import { SandboxError } from "../../domain/errors.js";
 import type {
   CommandResult,
   CreatePlan,
@@ -50,21 +50,21 @@ export interface LocalProviderOptions {
   diskGb?: number;
   ports?: LocalProviderEnvironment["ports"];
   projectRoot?: string;
-  factorydBinary?: string;
+  sandboxdBinary?: string;
 }
 
 function parseJson(output: string): unknown {
   try {
     return JSON.parse(output.trim());
   } catch (error) {
-    throw new FactoryError("provider_response_invalid", "The local VM returned invalid JSON.", error);
+    throw new SandboxError("provider_response_invalid", "The local VM returned invalid JSON.", error);
   }
 }
 
 function requireLocalEnvironment(record: EnvironmentRecord): LocalProviderEnvironment {
   const environment = record.providerEnvironment;
   if (!environment || environment.provider !== "local") {
-    throw new FactoryError("environment_not_provisioned", `Environment ${record.id} does not have a local VM yet.`);
+    throw new SandboxError("environment_not_provisioned", `Environment ${record.id} does not have a local VM yet.`);
   }
   return environment;
 }
@@ -76,7 +76,7 @@ export class LocalProvider implements EnvironmentProvider {
   private readonly diskGb: number;
   private readonly configuredPorts: LocalProviderEnvironment["ports"] | undefined;
   private readonly projectRoot: string;
-  private readonly factorydBinary: string | undefined;
+  private readonly sandboxdBinary: string | undefined;
 
   constructor(private readonly runner: CommandRunner, options: LocalProviderOptions = {}) {
     this.cpu = options.cpu ?? 4;
@@ -84,13 +84,13 @@ export class LocalProvider implements EnvironmentProvider {
     this.diskGb = options.diskGb ?? 40;
     this.configuredPorts = options.ports;
     this.projectRoot = options.projectRoot ?? resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-    this.factorydBinary = options.factorydBinary ?? process.env.SALEOR_FACTORY_LOCAL_FACTORYD;
+    this.sandboxdBinary = options.sandboxdBinary ?? process.env.SALEOR_SANDBOX_LOCAL_SANDBOXD;
   }
 
   async doctor(): Promise<DoctorReport> {
     const checks: DoctorCheck[] = [];
     checks.push(await this.commandCheck("Lima", "limactl", ["--version"]));
-    if (!this.factorydBinary) {
+    if (!this.sandboxdBinary) {
       checks.push(await this.commandCheck("Docker builder", "docker", ["version", "--format", "{{.Server.Version}}"]));
     }
     return { ok: checks.every((check) => check.ok), provider: "local", checks };
@@ -122,23 +122,23 @@ export class LocalProvider implements EnvironmentProvider {
     ], { timeoutMs: 600_000 });
     if (create.exitCode !== 0) {
       await this.runner.run("limactl", ["delete", "--force", name], { timeoutMs: 120_000 });
-      throw new FactoryError("provider_create_failed", create.stderr.trim() || "Lima could not create the VM.");
+      throw new SandboxError("provider_create_failed", create.stderr.trim() || "Lima could not create the VM.");
     }
 
     try {
       await this.mustRun("limactl", ["start", "--tty=false", name], "Lima could not start the VM.", 600_000);
-      const artifact = await this.prepareFactoryd();
+      const artifact = await this.prepareSandboxd();
       try {
-        await this.mustRun("limactl", ["copy", artifact.path, `${name}:/tmp/factoryd`], "Could not copy factoryd into the VM.", 120_000);
-        await this.mustRun("limactl", ["copy", join(this.projectRoot, "images", "factoryd.service"), `${name}:/tmp/factoryd.service`], "Could not copy the factoryd service into the VM.", 120_000);
+        await this.mustRun("limactl", ["copy", artifact.path, `${name}:/tmp/sandboxd`], "Could not copy sandboxd into the VM.", 120_000);
+        await this.mustRun("limactl", ["copy", join(this.projectRoot, "images", "sandboxd.service"), `${name}:/tmp/sandboxd.service`], "Could not copy the sandboxd service into the VM.", 120_000);
       } finally {
         await artifact.cleanup();
       }
-      await this.guestMustRun(name, ["sudo", "install", "-m", "0755", "/tmp/factoryd", "/usr/local/bin/factoryd"], "Could not install factoryd.");
-      await this.guestMustRun(name, ["sudo", "install", "-m", "0644", "/tmp/factoryd.service", "/etc/systemd/system/factoryd.service"], "Could not install the factoryd service.");
+      await this.guestMustRun(name, ["sudo", "install", "-m", "0755", "/tmp/sandboxd", "/usr/local/bin/sandboxd"], "Could not install sandboxd.");
+      await this.guestMustRun(name, ["sudo", "install", "-m", "0644", "/tmp/sandboxd.service", "/etc/systemd/system/sandboxd.service"], "Could not install the sandboxd service.");
       await this.guestMustRun(name, ["sudo", "systemctl", "daemon-reload"], "Could not reload systemd.");
-      await this.guestMustRun(name, ["sudo", "systemctl", "enable", "--now", "factoryd.service"], "Could not start factoryd.");
-      await this.waitForFactoryd(name);
+      await this.guestMustRun(name, ["sudo", "systemctl", "enable", "--now", "sandboxd.service"], "Could not start sandboxd.");
+      await this.waitForSandboxd(name);
 
       const gatewayUrl = `http://127.0.0.1:${ports.gateway}`;
       const job = JSON.stringify({
@@ -150,7 +150,7 @@ export class LocalProvider implements EnvironmentProvider {
         dashboardTag: record.source.versionLine ?? defaultDashboardTag,
         privateUrl: gatewayUrl,
       });
-      await this.guestMustRun(name, ["sudo", "factoryd", "provision", "--job", "-"], "factoryd did not accept the provisioning job.", 30_000, job);
+      await this.guestMustRun(name, ["sudo", "sandboxd", "provision", "--job", "-"], "sandboxd did not accept the provisioning job.", 30_000, job);
 
       return {
         environment: { provider: "local", providerId: name, name, ports },
@@ -170,13 +170,13 @@ export class LocalProvider implements EnvironmentProvider {
 
   async inspect(record: EnvironmentRecord): Promise<ProviderStatus> {
     const environment = requireLocalEnvironment(record);
-    const result = await this.runGuest(environment.name, ["sudo", "factoryd", "status"], 20_000);
+    const result = await this.runGuest(environment.name, ["sudo", "sandboxd", "status"], 20_000);
     if (result.exitCode !== 0) {
       return { state: "provisioning", phase: "provisioning_vm", updatedAt: new Date().toISOString() };
     }
     const parsed = providerStatusSchema.parse(parseJson(result.stdout));
     if (parsed.commit && parsed.commit !== record.source.commit) {
-      throw new FactoryError("guest_commit_mismatch", `factoryd reports ${parsed.commit}, but ${record.source.commit} was requested.`);
+      throw new SandboxError("guest_commit_mismatch", `sandboxd reports ${parsed.commit}, but ${record.source.commit} was requested.`);
     }
     return parsed.state === "requested"
       ? { state: "provisioning", phase: "provisioning_vm", updatedAt: parsed.updatedAt }
@@ -186,10 +186,10 @@ export class LocalProvider implements EnvironmentProvider {
   async logs(record: EnvironmentRecord, options: LogOptions): Promise<CommandResult> {
     const environment = requireLocalEnvironment(record);
     if (options.service && !services.has(options.service)) {
-      throw new FactoryError("invalid_service", `Unknown Saleor service: ${options.service}.`);
+      throw new SandboxError("invalid_service", `Unknown Saleor service: ${options.service}.`);
     }
     return this.runner.run("limactl", [
-      "shell", "--workdir=/tmp", environment.name, "sudo", "factoryd", "logs",
+      "shell", "--workdir=/tmp", environment.name, "sudo", "sandboxd", "logs",
       "--tail", String(options.tail),
       ...(options.follow ? ["--follow"] : []),
       ...(options.phase ? ["--phase", options.phase] : []),
@@ -198,17 +198,17 @@ export class LocalProvider implements EnvironmentProvider {
   }
 
   async exec(record: EnvironmentRecord, command: string[]): Promise<CommandResult> {
-    if (command.length === 0) throw new FactoryError("missing_command", "Provide a command after --.");
+    if (command.length === 0) throw new SandboxError("missing_command", "Provide a command after --.");
     const environment = requireLocalEnvironment(record);
-    const result = await this.runGuest(environment.name, ["sudo", "factoryd", "exec", "--request", "-"], undefined, JSON.stringify({ service: "api", command }));
-    if (result.exitCode !== 0) throw new FactoryError("guest_exec_failed", result.stderr.trim() || "factoryd could not run the command.");
+    const result = await this.runGuest(environment.name, ["sudo", "sandboxd", "exec", "--request", "-"], undefined, JSON.stringify({ service: "api", command }));
+    if (result.exitCode !== 0) throw new SandboxError("guest_exec_failed", result.stderr.trim() || "sandboxd could not run the command.");
     return commandResultSchema.parse(parseJson(result.stdout));
   }
 
   async http(record: EnvironmentRecord, request: EnvironmentHttpRequest): Promise<EnvironmentHttpResponse> {
     const environment = requireLocalEnvironment(record);
-    const result = await this.runGuest(environment.name, ["sudo", "factoryd", "http", "--request", "-"], 60_000, JSON.stringify(request));
-    if (result.exitCode !== 0) throw new FactoryError("guest_http_failed", result.stderr.trim() || "factoryd could not make the HTTP request.");
+    const result = await this.runGuest(environment.name, ["sudo", "sandboxd", "http", "--request", "-"], 60_000, JSON.stringify(request));
+    if (result.exitCode !== 0) throw new SandboxError("guest_http_failed", result.stderr.trim() || "sandboxd could not make the HTTP request.");
     return httpResponseSchema.parse(parseJson(result.stdout));
   }
 
@@ -221,7 +221,7 @@ export class LocalProvider implements EnvironmentProvider {
     const environment = requireLocalEnvironment(record);
     const result = await this.runner.run("limactl", ["delete", "--force", environment.name], { timeoutMs: 120_000 });
     if (result.exitCode !== 0 && !/does not exist|not found/i.test(result.stderr)) {
-      throw new FactoryError("provider_destroy_failed", result.stderr.trim() || `Lima could not delete ${environment.name}.`);
+      throw new SandboxError("provider_destroy_failed", result.stderr.trim() || `Lima could not delete ${environment.name}.`);
     }
   }
 
@@ -245,7 +245,7 @@ export class LocalProvider implements EnvironmentProvider {
         return ports;
       }
     }
-    throw new FactoryError("local_ports_unavailable", "Could not find four free local ports for the VM.");
+    throw new SandboxError("local_ports_unavailable", "Could not find four free local ports for the VM.");
   }
 
   private portIsAvailable(port: number): Promise<boolean> {
@@ -256,18 +256,18 @@ export class LocalProvider implements EnvironmentProvider {
     });
   }
 
-  private async prepareFactoryd(): Promise<{ path: string; cleanup: () => Promise<void> }> {
-    if (this.factorydBinary) return { path: this.factorydBinary, cleanup: async () => {} };
-    const directory = await mkdtemp(join(tmpdir(), "saleor-factory-"));
+  private async prepareSandboxd(): Promise<{ path: string; cleanup: () => Promise<void> }> {
+    if (this.sandboxdBinary) return { path: this.sandboxdBinary, cleanup: async () => {} };
+    const directory = await mkdtemp(join(tmpdir(), "saleor-sandbox-"));
     const result = await this.runner.run("docker", [
       "build", "--file", join(this.projectRoot, "images", "local", "Dockerfile"),
       "--output", `type=local,dest=${directory}`, this.projectRoot,
     ], { timeoutMs: 600_000 });
     if (result.exitCode !== 0) {
       await rm(directory, { recursive: true, force: true });
-      throw new FactoryError("guest_build_failed", result.stderr.trim() || "Could not build factoryd for the local VM.");
+      throw new SandboxError("guest_build_failed", result.stderr.trim() || "Could not build sandboxd for the local VM.");
     }
-    return { path: join(directory, "factoryd"), cleanup: () => rm(directory, { recursive: true, force: true }) };
+    return { path: join(directory, "sandboxd"), cleanup: () => rm(directory, { recursive: true, force: true }) };
   }
 
   private runGuest(name: string, command: string[], timeoutMs?: number, input?: string): Promise<CommandResult> {
@@ -276,21 +276,21 @@ export class LocalProvider implements EnvironmentProvider {
 
   private async guestMustRun(name: string, command: string[], message: string, timeoutMs = 60_000, input?: string): Promise<void> {
     const result = await this.runGuest(name, command, timeoutMs, input);
-    if (result.exitCode !== 0) throw new FactoryError("guest_setup_failed", result.stderr.trim() || message);
+    if (result.exitCode !== 0) throw new SandboxError("guest_setup_failed", result.stderr.trim() || message);
   }
 
   private async mustRun(command: string, args: string[], message: string, timeoutMs: number): Promise<void> {
     const result = await this.runner.run(command, args, { timeoutMs });
-    if (result.exitCode !== 0) throw new FactoryError("provider_create_failed", result.stderr.trim() || message);
+    if (result.exitCode !== 0) throw new SandboxError("provider_create_failed", result.stderr.trim() || message);
   }
 
-  private async waitForFactoryd(name: string): Promise<void> {
+  private async waitForSandboxd(name: string): Promise<void> {
     for (let attempt = 0; attempt < 30; attempt += 1) {
-      const result = await this.runGuest(name, ["sudo", "factoryd", "status"], 20_000);
+      const result = await this.runGuest(name, ["sudo", "sandboxd", "status"], 20_000);
       if (result.exitCode === 0) return;
       await new Promise((resolvePromise) => setTimeout(resolvePromise, 2_000));
     }
-    throw new FactoryError("guest_unavailable", "The local VM started, but factoryd did not become available.");
+    throw new SandboxError("guest_unavailable", "The local VM started, but sandboxd did not become available.");
   }
 
   private async commandCheck(name: string, command: string, args: string[]): Promise<DoctorCheck> {

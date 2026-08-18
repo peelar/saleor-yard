@@ -1,22 +1,22 @@
-export class FactoryError extends Error {
+export class SandboxError extends Error {
   readonly code: string;
   readonly details?: unknown;
 
   constructor(code: string, message: string, details?: unknown) {
     super(message);
-    this.name = "FactoryError";
+    this.name = "SandboxError";
     this.code = code;
     this.details = details;
   }
 }
-export function toFactoryError(error: unknown): FactoryError {
-  if (error instanceof FactoryError) {
+export function toSandboxError(error: unknown): SandboxError {
+  if (error instanceof SandboxError) {
     return error;
   }
 
   if (error instanceof Error) {
-    return new FactoryError("unexpected_error", error.message);
+    return new SandboxError("unexpected_error", error.message);
   }
 
-  return new FactoryError("unexpected_error", "An unexpected error occurred.", error);
+  return new SandboxError("unexpected_error", "An unexpected error occurred.", error);
 }

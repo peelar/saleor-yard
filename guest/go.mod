@@ -1,3 +1,3 @@
-module github.com/saleor/saleor-factory/guest
+module github.com/saleor/saleor-sandbox/guest
 
 go 1.26.0

@@ -1,4 +1,4 @@
-package factoryd
+package sandboxd
 
 import (
 	"bytes"
@@ -59,7 +59,7 @@ func (c *Client) Logs(ctx context.Context, output io.Writer, service, phase stri
 	if phase != "" {
 		query.Set("phase", phase)
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://factoryd/v1/logs?"+query.Encode(), nil)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://sandboxd/v1/logs?"+query.Encode(), nil)
 	if err != nil {
 		return err
 	}
@@ -70,7 +70,7 @@ func (c *Client) Logs(ctx context.Context, output io.Writer, service, phase stri
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(response.Body, 1<<20))
-		return fmt.Errorf("factoryd returned HTTP %d: %s", response.StatusCode, body)
+		return fmt.Errorf("sandboxd returned HTTP %d: %s", response.StatusCode, body)
 	}
 	_, err = io.Copy(output, response.Body)
 	return err
@@ -85,7 +85,7 @@ func (c *Client) jsonRequest(ctx context.Context, method, path string, input, ou
 		}
 		body = bytes.NewReader(data)
 	}
-	request, err := http.NewRequestWithContext(ctx, method, "http://factoryd"+path, body)
+	request, err := http.NewRequestWithContext(ctx, method, "http://sandboxd"+path, body)
 	if err != nil {
 		return err
 	}
@@ -99,7 +99,7 @@ func (c *Client) jsonRequest(ctx context.Context, method, path string, input, ou
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		data, _ := io.ReadAll(io.LimitReader(response.Body, 1<<20))
-		return fmt.Errorf("factoryd returned HTTP %d: %s", response.StatusCode, data)
+		return fmt.Errorf("sandboxd returned HTTP %d: %s", response.StatusCode, data)
 	}
 	if output == nil {
 		return nil

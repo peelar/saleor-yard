@@ -1,4 +1,4 @@
-package factoryd
+package sandboxd
 
 import (
 	"context"
@@ -237,7 +237,7 @@ func (s *Server) composeArgs() []string {
 	return []string{
 		"compose",
 		"-f", filepath.Join(s.config.PlatformDir(), "docker-compose.yml"),
-		"-f", filepath.Join(s.config.PlatformDir(), "factory.override.yml"),
+		"-f", filepath.Join(s.config.PlatformDir(), "sandbox.override.yml"),
 	}
 }
 

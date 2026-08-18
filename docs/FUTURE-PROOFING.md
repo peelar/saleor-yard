@@ -7,7 +7,7 @@ whole cloud service now.
 ## What remains the same
 
 The environment engine, source resolver, lifecycle, provider interface, and
-`factoryd` guest runtime do not depend on Commander or a web framework. A
+`sandboxd` guest runtime do not depend on Commander or a web framework. A
 future HTTP handler can call the same engine methods as the CLI.
 
 Source selectors are resolved to full commits before a VM starts. Stored jobs
@@ -40,7 +40,7 @@ cases inside the exe.dev adapter.
 - The CLI only parses input and prints output.
 - The engine works with plain TypeScript objects and repository interfaces.
 - Each provider owns its VM, transport, and access details.
-- The VM owns Saleor setup and runtime operations through `factoryd`.
+- The VM owns Saleor setup and runtime operations through `sandboxd`.
 - The VM image and Saleor Platform revision are versioned and pinned.
 
 ## Known first-version limits

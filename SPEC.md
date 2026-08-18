@@ -1,28 +1,28 @@
-# Saleor Factory Specification
+# Saleor Sandbox Specification
 
 ## 1. Purpose
 
-Saleor Factory creates a disposable Saleor development environment from a
+Saleor Sandbox creates a disposable Saleor development environment from a
 public `saleor/saleor` release, branch, commit, or pull request.
 
 The first user is a local coding agent such as Codex. The same environment
 engine should later be deployable behind a private HTTP API for cloud agents.
 
-The product is an **environment factory**, not a VM manager. A VM is the first
-implementation detail and may change later.
+The product creates and controls **disposable Saleor environments**. It is not a
+VM manager. A VM is the first implementation detail and may change later.
 
 ## 2. Product Promise
 
-Give Saleor Factory one source. It returns a private, observable, controllable
+Give Saleor Sandbox one source. It returns a private, observable, controllable
 Saleor environment running the exact resolved commit.
 
 ```text
 Agent
   |
   |-- HTTP gateway --> Dashboard and GraphQL
-  |-- factory logs --> provisioning and service logs
-  |-- factory exec --> commands inside the environment
-  `-- factory destroy
+  |-- sandbox logs --> provisioning and service logs
+  |-- sandbox exec --> commands inside the environment
+  `-- sandbox destroy
                          |
                     Provider-owned VM
 ```
@@ -70,13 +70,13 @@ the Saleor Core source. The caller never supplies both a version and a branch.
 Examples:
 
 ```bash
-factory create release:3.23.26
-factory create branch:main
-factory create commit:eaaf809e91802745618e8b5390afccc80812d4f9
-factory create pr:19668
+sandbox create release:3.23.26
+sandbox create branch:main
+sandbox create commit:eaaf809e91802745618e8b5390afccc80812d4f9
+sandbox create pr:19668
 ```
 
-Before creating infrastructure, Factory resolves the selector through GitHub
+Before creating infrastructure, Sandbox resolves the selector through GitHub
 and records:
 
 - the requested selector;
@@ -93,7 +93,7 @@ environment from silently changing when a branch receives another commit.
 ### 5.1 Create and wait
 
 ```bash
-factory create pr:19668 --ttl 2h --wait --json
+sandbox create pr:19668 --ttl 2h --wait --json
 ```
 
 The HTTP API will eventually express the same operation:
@@ -114,12 +114,16 @@ POST /v1/environments
 ```
 
 Creation is asynchronous. The API returns an environment ID immediately. The
-CLI may wait and show progress to feel synchronous.
+CLI may wait and show progress to feel synchronous. Interactive CLI progress
+shows a spinner, elapsed time, and a 0-100% lifecycle bar. The percentage moves
+only when Sandbox reaches a real lifecycle milestone; it is not a time estimate.
+When standard error is not interactive, Sandbox writes one line per milestone
+instead of terminal animation. `--no-progress` disables both forms.
 
 ### 5.2 Inspect
 
 ```bash
-factory status env_abc123 --json
+sandbox status env_abc123 --json
 ```
 
 Ready output contains the stable environment contract:
@@ -150,12 +154,12 @@ The normal environment has one private HTTPS gateway:
 - required media and API paths also reach Core.
 
 A browser-capable local agent gets a loopback URL for a local Lima VM. For an
-exe.dev VM it can use `factory tunnel`, or open the private URL when its browser
+exe.dev VM it can use `sandbox tunnel`, or open the private URL when its browser
 has an exe.dev session. A command-line agent can make a request through the
 provider control channel without handling an HTTPS access token itself:
 
 ```bash
-factory http env_abc123 \
+sandbox http env_abc123 \
   POST /graphql/ \
   --data '{"query":"{ shop { name } }"}' \
   --json
@@ -166,10 +170,10 @@ factory http env_abc123 \
 Logs are part of the product, not an implementation escape hatch.
 
 ```bash
-factory logs env_abc123
-factory logs env_abc123 --service api
-factory logs env_abc123 --service worker --follow
-factory logs env_abc123 --phase provision
+sandbox logs env_abc123
+sandbox logs env_abc123 --service api
+sandbox logs env_abc123 --service worker --follow
+sandbox logs env_abc123 --phase provision
 ```
 
 Provisioning logs cover VM preparation, cloning, image building, migrations,
@@ -184,7 +188,7 @@ relevant logs remain available until the environment is destroyed or expires.
 Normal automation uses non-interactive commands:
 
 ```bash
-factory exec env_abc123 -- python manage.py check
+sandbox exec env_abc123 -- python manage.py check
 ```
 
 The result has an exit code, standard output, and standard error. An interactive
@@ -196,7 +200,7 @@ The private HTTPS gateway covers normal use. A local tunnel is an escape hatch
 for raw service ports:
 
 ```bash
-factory tunnel env_abc123
+sandbox tunnel env_abc123
 ```
 
 Expected local endpoints:
@@ -207,17 +211,17 @@ Expected local endpoints:
 - Mailpit: `http://localhost:18025/`
 - Jaeger: `http://localhost:16686/`
 
-Factory owns the SSH forwarding process and reports how to stop it. Local Lima
+Sandbox owns the SSH forwarding process and reports how to stop it. Local Lima
 VMs forward separate loopback ports when they start, so this command only
 prints their existing URLs.
 
 ### 5.7 Destroy
 
 ```bash
-factory destroy env_abc123
+sandbox destroy env_abc123
 ```
 
-Explicit destroy should be idempotent. `factory prune` deletes expired VMs known
+Explicit destroy should be idempotent. `sandbox prune` deletes expired VMs known
 to the local CLI. A deployed control plane must run this cleanup permanently;
 recording a TTL alone does not delete a VM.
 
@@ -293,6 +297,7 @@ future private service, provider credentials stay in the control plane.
 The CLI is designed for agents first:
 
 - no prompts in normal commands;
+- the local provider is used when no provider is selected;
 - stable exit codes;
 - `--json` on every command that returns data;
 - errors on standard error;
@@ -303,17 +308,17 @@ The CLI is designed for agents first:
 Initial command surface:
 
 ```text
-factory create <source>
-factory list
-factory status <environment>
-factory wait <environment>
-factory logs <environment>
-factory exec <environment> -- <command>
-factory http <environment> <method> <path>
-factory tunnel <environment>
-factory prune
-factory destroy <environment>
-factory doctor
+sandbox create <source>
+sandbox list
+sandbox status <environment>
+sandbox wait <environment>
+sandbox logs <environment>
+sandbox exec <environment> -- <command>
+sandbox http <environment> <method> <path>
+sandbox tunnel <environment>
+sandbox prune
+sandbox destroy <environment>
+sandbox doctor
 ```
 
 ## 10. Future Private API
@@ -355,7 +360,7 @@ The implementation has four main parts:
    access, and destroys the VM.
 4. **Transport** turns CLI or HTTP input into engine calls and formats results.
 
-5. **Guest runtime (`factoryd`)** runs inside the VM. It owns Saleor setup,
+5. **Guest runtime (`sandboxd`)** runs inside the VM. It owns Saleor setup,
    readiness, service logs, and command execution through a small structured
    API.
 
@@ -398,8 +403,8 @@ Good:
 ```text
 env_abc123 failed while migrating_database.
 The VM is still available until 18:00 UTC.
-Run: factory logs env_abc123 --phase provision
-Destroy it with: factory destroy env_abc123
+Run: sandbox logs env_abc123 --phase provision
+Destroy it with: sandbox destroy env_abc123
 ```
 
 ## 14. First Milestone

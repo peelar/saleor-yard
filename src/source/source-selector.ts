@@ -1,4 +1,4 @@
-import { FactoryError } from "../domain/errors.js";
+import { SandboxError } from "../domain/errors.js";
 import type { SourceSelector } from "../domain/types.js";
 
 const safeRef = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$/;
@@ -14,16 +14,16 @@ function validateGitRef(value: string, label: string): void {
     value.endsWith(".lock");
 
   if (unsafe) {
-    throw new FactoryError(
+    throw new SandboxError(
       "invalid_source",
-      `${label} contains characters that Saleor Factory does not accept.`,
+      `${label} contains characters that Saleor Sandbox does not accept.`,
     );
   }
 }
 export function parseSourceSelector(input: string): SourceSelector {
   const separator = input.indexOf(":");
   if (separator < 1) {
-    throw new FactoryError(
+    throw new SandboxError(
       "invalid_source",
       "Source must start with release:, branch:, commit:, or pr:.",
     );
@@ -34,7 +34,7 @@ export function parseSourceSelector(input: string): SourceSelector {
 
   if (kind === "release") {
     if (!releaseRef.test(value)) {
-      throw new FactoryError("invalid_source", "Release must look like release:3.23.26.");
+      throw new SandboxError("invalid_source", "Release must look like release:3.23.26.");
     }
     return { kind: "release", value };
   }
@@ -46,19 +46,19 @@ export function parseSourceSelector(input: string): SourceSelector {
 
   if (kind === "commit") {
     if (!commitRef.test(value)) {
-      throw new FactoryError("invalid_source", "Commit must contain 7 to 40 hexadecimal characters.");
+      throw new SandboxError("invalid_source", "Commit must contain 7 to 40 hexadecimal characters.");
     }
     return { kind: "commit", value: value.toLowerCase() };
   }
 
   if (kind === "pr") {
     if (!/^[1-9][0-9]*$/.test(value)) {
-      throw new FactoryError("invalid_source", "Pull request must look like pr:19668.");
+      throw new SandboxError("invalid_source", "Pull request must look like pr:19668.");
     }
     return { kind: "pull_request", value: Number(value) };
   }
 
-  throw new FactoryError(
+  throw new SandboxError(
     "invalid_source",
     "Source must start with release:, branch:, commit:, or pr:.",
   );

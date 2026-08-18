@@ -1,12 +1,12 @@
 [Unit]
-Description=Saleor Factory guest runtime
+Description=Saleor Sandbox guest runtime
 After=network-online.target docker.service
 Wants=network-online.target
 Requires=docker.service
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/factoryd serve
+ExecStart=/usr/local/bin/sandboxd serve
 Restart=on-failure
 RestartSec=2
 

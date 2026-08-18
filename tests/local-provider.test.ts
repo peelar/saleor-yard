@@ -57,7 +57,7 @@ function provisionedRecord(): EnvironmentRecord {
 }
 
 describe("LocalProvider", () => {
-  it("creates a Lima VM, installs factoryd, and submits the same structured job", async () => {
+  it("creates a Lima VM, installs sandboxd, and submits the same structured job", async () => {
     const runner = new FakeRunner([
       success(), success(), success(), success(), success(), success(), success(), success(),
       success('{"state":"requested","phase":"requested","updatedAt":"2026-08-18T12:00:00Z"}'),
@@ -65,7 +65,7 @@ describe("LocalProvider", () => {
     ]);
     const provider = new LocalProvider(runner, {
       ports,
-      factorydBinary: "/artifacts/factoryd",
+      sandboxdBinary: "/artifacts/sandboxd",
       projectRoot: "/project",
     });
 
@@ -74,10 +74,10 @@ describe("LocalProvider", () => {
     expect(runner.calls[0]).toMatchObject({ command: "limactl" });
     expect(runner.calls[0]?.args).toContain("template:docker-rootful");
     expect(runner.calls[0]?.args).toContain("--port-forward=28080:8080,static=true");
-    expect(runner.calls[2]?.args).toEqual(["copy", "/artifacts/factoryd", "sf-pr-123-abc123:/tmp/factoryd"]);
+    expect(runner.calls[2]?.args).toEqual(["copy", "/artifacts/sandboxd", "sf-pr-123-abc123:/tmp/sandboxd"]);
     const provision = runner.calls.at(-1);
     expect(provision?.args).toEqual([
-      "shell", "--workdir=/tmp", "sf-pr-123-abc123", "sudo", "factoryd", "provision", "--job", "-",
+      "shell", "--workdir=/tmp", "sf-pr-123-abc123", "sudo", "sandboxd", "provision", "--job", "-",
     ]);
     expect(JSON.parse(provision?.options?.input ?? "{}")).toMatchObject({
       environmentId: record().id,
@@ -91,7 +91,7 @@ describe("LocalProvider", () => {
 
   it("passes exec arguments as JSON rather than guest command arguments", async () => {
     const runner = new FakeRunner([success('{"exitCode":0,"stdout":"safe","stderr":""}')]);
-    const provider = new LocalProvider(runner, { ports, factorydBinary: "/artifacts/factoryd" });
+    const provider = new LocalProvider(runner, { ports, sandboxdBinary: "/artifacts/sandboxd" });
 
     await provider.exec(provisionedRecord(), ["python", "manage.py", "check; touch /tmp/unsafe"]);
 
@@ -103,7 +103,7 @@ describe("LocalProvider", () => {
   });
 
   it("uses existing forwarded ports instead of opening another tunnel", async () => {
-    const provider = new LocalProvider(new FakeRunner([]), { ports, factorydBinary: "/artifacts/factoryd" });
+    const provider = new LocalProvider(new FakeRunner([]), { ports, sandboxdBinary: "/artifacts/sandboxd" });
     await expect(provider.tunnel(provisionedRecord())).resolves.toMatchObject({
       exitCode: 0,
       stdout: expect.stringContaining("already forwarded"),
@@ -112,7 +112,7 @@ describe("LocalProvider", () => {
 
   it("deletes only its own Lima instance", async () => {
     const runner = new FakeRunner([success()]);
-    const provider = new LocalProvider(runner, { ports, factorydBinary: "/artifacts/factoryd" });
+    const provider = new LocalProvider(runner, { ports, sandboxdBinary: "/artifacts/sandboxd" });
 
     await provider.destroy(provisionedRecord());
 
@@ -127,7 +127,7 @@ describe("LocalProvider", () => {
       { exitCode: 124, stdout: "", stderr: "Command timed out." },
       success(),
     ]);
-    const provider = new LocalProvider(runner, { ports, factorydBinary: "/artifacts/factoryd" });
+    const provider = new LocalProvider(runner, { ports, sandboxdBinary: "/artifacts/sandboxd" });
 
     await expect(provider.create(record())).rejects.toMatchObject({ code: "provider_create_failed" });
 

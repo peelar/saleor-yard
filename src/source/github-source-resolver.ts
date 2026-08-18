@@ -1,4 +1,4 @@
-import { FactoryError } from "../domain/errors.js";
+import { SandboxError } from "../domain/errors.js";
 import type { ResolvedSource, SourceSelector } from "../domain/types.js";
 import { formatSourceSelector } from "./source-selector.js";
 
@@ -33,19 +33,19 @@ function versionLineFromRef(ref: string): string | undefined {
 
 function assertCommit(value: string): string {
   if (!/^[a-f0-9]{40}$/i.test(value)) {
-    throw new FactoryError("github_response_invalid", "GitHub returned an invalid commit SHA.");
+    throw new SandboxError("github_response_invalid", "GitHub returned an invalid commit SHA.");
   }
   return value.toLowerCase();
 }
 
 function assertPublicCloneUrl(value: string, fullName: string): string {
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(fullName)) {
-    throw new FactoryError("github_response_invalid", "GitHub returned an invalid repository name.");
+    throw new SandboxError("github_response_invalid", "GitHub returned an invalid repository name.");
   }
 
   const expected = `https://github.com/${fullName}.git`;
   if (value !== expected) {
-    throw new FactoryError("github_response_invalid", "GitHub returned an unexpected clone URL.");
+    throw new SandboxError("github_response_invalid", "GitHub returned an unexpected clone URL.");
   }
   return value;
 }
@@ -88,7 +88,7 @@ export class GitHubSourceResolver {
     const response = await this.get<GitHubPullResponse>(`/repos/${repository}/pulls/${number}`);
 
     if (!response.head.repo || response.head.repo.private) {
-      throw new FactoryError(
+      throw new SandboxError(
         "unsupported_private_source",
         "The MVP can only create environments from public pull request repositories.",
       );
@@ -115,7 +115,7 @@ export class GitHubSourceResolver {
   private async get<T>(path: string): Promise<T> {
     const headers: Record<string, string> = {
       Accept: "application/vnd.github+json",
-      "User-Agent": "saleor-factory",
+      "User-Agent": "saleor-sandbox",
       "X-GitHub-Api-Version": "2026-03-10",
     };
     if (this.token) {
@@ -125,9 +125,9 @@ export class GitHubSourceResolver {
     const response = await this.fetcher(`${githubApi}${path}`, { headers });
     if (!response.ok) {
       if (response.status === 404) {
-        throw new FactoryError("source_not_found", "GitHub could not find that public Saleor source.");
+        throw new SandboxError("source_not_found", "GitHub could not find that public Saleor source.");
       }
-      throw new FactoryError(
+      throw new SandboxError(
         "github_request_failed",
         `GitHub source lookup failed with HTTP ${response.status}.`,
       );

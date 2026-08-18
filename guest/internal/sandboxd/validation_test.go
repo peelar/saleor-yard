@@ -1,4 +1,4 @@
-package factoryd
+package sandboxd
 
 import "testing"
 

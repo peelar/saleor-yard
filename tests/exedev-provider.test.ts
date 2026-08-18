@@ -58,7 +58,7 @@ function record(): EnvironmentRecord {
 }
 
 describe("ExeDevProvider", () => {
-  it("creates a VM from the Factory image and sends a structured job to factoryd", async () => {
+  it("creates a VM from the Sandbox image and sends a structured job to sandboxd", async () => {
     const runner = new FakeRunner([
       success('{"vm_name":"sf-pr-123-abc123","ssh_dest":"sf-pr-123-abc123.exe.xyz","https_url":"https://sf-pr-123-abc123.exe.xyz"}'),
       success(),
@@ -66,7 +66,7 @@ describe("ExeDevProvider", () => {
       success('{"state":"requested","phase":"requested","updatedAt":"2026-08-18T12:00:00Z"}'),
       success('{"state":"provisioning","phase":"provisioning_vm","updatedAt":"2026-08-18T12:00:01Z"}'),
     ]);
-    const provider = new ExeDevProvider(runner, { image: "ghcr.io/example/factory:v1" });
+    const provider = new ExeDevProvider(runner, { image: "ghcr.io/example/sandbox:v1" });
 
     const result = await provider.create(record());
 
@@ -75,7 +75,7 @@ describe("ExeDevProvider", () => {
       privateUrl: "https://sf-pr-123-abc123.exe.xyz",
     });
     expect(result.access.graphql).toBe("https://sf-pr-123-abc123.exe.xyz/graphql/");
-    expect(runner.calls[0]?.args).toContain("--image=ghcr.io/example/factory:v1");
+    expect(runner.calls[0]?.args).toContain("--image=ghcr.io/example/sandbox:v1");
     expect(runner.calls[0]?.args.some((argument) => argument.includes("setup-script"))).toBe(false);
     const provisionCall = runner.calls.at(-1);
     expect(provisionCall?.options?.input).toBeDefined();

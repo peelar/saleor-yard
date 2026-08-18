@@ -1,6 +1,6 @@
 # Architecture
 
-This document explains how Saleor Factory is built. Product behavior belongs in
+This document explains how Saleor Sandbox is built. Product behavior belongs in
 `SPEC.md`.
 
 ## One engine, two ways in
@@ -56,7 +56,7 @@ the guest runtime through the VM's private SSH connection. SSH is transport
 only; it does not contain the provisioning logic.
 
 The local adapter calls Lima's non-interactive CLI. It creates a Linux VM from
-Lima's rootful Docker template, copies in the same `factoryd` binary, and forwards a
+Lima's rootful Docker template, copies in the same `sandboxd` binary, and forwards a
 small set of VM ports to free loopback ports. Lima uses macOS native
 virtualization by default. Local URLs work without a separate tunnel.
 
@@ -66,9 +66,9 @@ building the local adapter exposed and removed those assumptions.
 
 ### Local state store
 
-The local CLI needs to remember the connection between a Factory environment ID
+The local CLI needs to remember the connection between a Sandbox environment ID
 and the provider VM ID. It stores small JSON records under
-`$SALEOR_FACTORY_HOME`, or an operating-system-specific user data directory by
+`$SALEOR_SANDBOX_HOME`, or an operating-system-specific user data directory by
 default.
 
 The store contains identifiers, source metadata, timestamps, and access
@@ -79,11 +79,11 @@ engine contract.
 
 ### Guest runtime
 
-Each VM contains a small service named `factoryd`. It has a local structured API
+Each VM contains a small service named `sandboxd`. It has a local structured API
 and a matching command-line client. The provider can ask it to provision,
 report status, stream logs, execute commands, and make local HTTP requests.
 
-`factoryd`:
+`sandboxd`:
 
 1. validates the job description received through the provider control channel;
 2. verifies required system tools;
@@ -102,15 +102,15 @@ and no large provisioning scripts.
 
 ### VM image and local guest artifact
 
-The exe.dev VM starts from a versioned Factory image based on exeuntu. The image
-contains Docker, Compose, `factoryd`, the systemd unit, and stable templates.
+The exe.dev VM starts from a versioned Sandbox image based on exeuntu. The image
+contains Docker, Compose, `sandboxd`, the systemd unit, and stable templates.
 Dynamic Saleor source code is never baked into this base image.
 
 Release automation publishes the image to GHCR. Production-like runs use a
 version tag or registry digest. Moving tags are not reproducible and are not the
 normal contract.
 
-For Lima, Factory builds the same static Go binary on the host with Docker,
+For Lima, Sandbox builds the same static Go binary on the host with Docker,
 copies it into the VM, and installs the shared systemd unit. A later release
 can ship signed binaries or a baked Lima image without changing the provider
 or guest contracts.
@@ -128,7 +128,7 @@ The guest accepts only those two URL forms.
 
 ## Logs and execution
 
-Factory uses `factoryd` through a provider-owned transport:
+Sandbox uses `sandboxd` through a provider-owned transport:
 
 - provisioning logs come from the guest runtime event stream;
 - service logs are streamed by the guest runtime;
@@ -152,7 +152,7 @@ and idempotency; those fields are not pretended into the local model today.
 ### Expiry
 
 The engine owns expiry decisions through `pruneExpired`. The local CLI exposes
-that as `factory prune`. A deployed control plane must call the same operation
+that as `sandbox prune`. A deployed control plane must call the same operation
 from a permanent cleanup worker. A timestamp by itself does not delete a VM.
 
 ## Security boundary

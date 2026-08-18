@@ -1,4 +1,4 @@
-package factoryd
+package sandboxd
 
 import (
 	"bytes"
@@ -56,9 +56,9 @@ func testConfig(t *testing.T, runner Runner) Config {
 	t.Helper()
 	root := t.TempDir()
 	return Config{
-		RootDir:       filepath.Join(root, "factory"),
+		RootDir:       filepath.Join(root, "sandbox"),
 		StateDir:      filepath.Join(root, "state"),
-		SocketPath:    filepath.Join(root, "run", "factoryd.sock"),
+		SocketPath:    filepath.Join(root, "run", "sandboxd.sock"),
 		GatewayPort:   8080,
 		CommandRunner: runner,
 	}

@@ -169,6 +169,21 @@ describe("EnvironmentEngine", () => {
     expect(repository.records.size).toBe(1);
   });
 
+  it("reports when provider provisioning starts", async () => {
+    const { engine } = setup();
+    const updates: Array<{ state: EnvironmentRecord["state"]; phase: EnvironmentRecord["phase"] }> = [];
+
+    await engine.create(
+      "pr:123",
+      { ttlMinutes: 30, dryRun: false, provider: "exedev" },
+      ({ state, phase }) => updates.push({ state, phase }),
+    );
+
+    expect(updates).toEqual([
+      { state: "provisioning", phase: "provisioning_vm" },
+    ]);
+  });
+
   it("records a terminal failure when creation fails", async () => {
     const { engine, provider, repository } = setup();
     provider.createFailure = new Error("provider unavailable");

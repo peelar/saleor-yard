@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { FactoryError } from "../domain/errors.js";
+import { SandboxError } from "../domain/errors.js";
 import type {
   CommandResult,
   CreatePlan,
@@ -37,9 +37,13 @@ export class EnvironmentEngine {
     return this.providerFor(providerName).doctor();
   }
 
-  async create(sourceInput: string, options: CreateOptions): Promise<EnvironmentRecord | CreatePlan> {
+  async create(
+    sourceInput: string,
+    options: CreateOptions,
+    onUpdate?: (record: EnvironmentRecord) => void,
+  ): Promise<EnvironmentRecord | CreatePlan> {
     if (!Number.isInteger(options.ttlMinutes) || options.ttlMinutes < 15 || options.ttlMinutes > 24 * 60) {
-      throw new FactoryError("invalid_ttl", "TTL must be between 15 minutes and 24 hours.");
+      throw new SandboxError("invalid_ttl", "TTL must be between 15 minutes and 24 hours.");
     }
 
     const source = await this.resolver.resolve(parseSourceSelector(sourceInput));
@@ -61,12 +65,12 @@ export class EnvironmentEngine {
     }
 
     await this.store.save(record);
+    record.state = "provisioning";
+    record.phase = "provisioning_vm";
+    record.updatedAt = new Date().toISOString();
+    await this.store.save(record);
+    onUpdate?.(record);
     try {
-      record.state = "provisioning";
-      record.phase = "provisioning_vm";
-      record.updatedAt = new Date().toISOString();
-      await this.store.save(record);
-
       const created = await this.providerFor(record.provider).create(record);
       record.providerEnvironment = created.environment;
       record.access = created.access;
@@ -82,6 +86,7 @@ export class EnvironmentEngine {
       };
       record.updatedAt = new Date().toISOString();
       await this.store.save(record);
+      onUpdate?.(record);
       throw error;
     }
   }
@@ -134,7 +139,7 @@ export class EnvironmentEngine {
       }
       await new Promise((resolve) => setTimeout(resolve, intervalMs));
     }
-    throw new FactoryError("wait_timeout", `Environment ${id} did not become ready in time.`);
+    throw new SandboxError("wait_timeout", `Environment ${id} did not become ready in time.`);
   }
 
   async logs(id: string, options: LogOptions): Promise<CommandResult> {
@@ -210,7 +215,7 @@ export class EnvironmentEngine {
   private providerFor(name: ProviderName): EnvironmentProvider {
     const provider = this.providers.get(name);
     if (!provider) {
-      throw new FactoryError("provider_unavailable", `Provider ${name} is not configured.`);
+      throw new SandboxError("provider_unavailable", `Provider ${name} is not configured.`);
     }
     return provider;
   }

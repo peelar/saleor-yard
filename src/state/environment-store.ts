@@ -1,7 +1,7 @@
 import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import { FactoryError } from "../domain/errors.js";
+import { SandboxError } from "../domain/errors.js";
 import {
   environmentPhases,
   environmentStates,
@@ -89,13 +89,13 @@ export class EnvironmentStore {
       const contents = await readFile(this.pathFor(id), "utf8");
       return environmentRecordSchema.parse(JSON.parse(contents)) as EnvironmentRecord;
     } catch (error) {
-      if (error instanceof FactoryError) {
+      if (error instanceof SandboxError) {
         throw error;
       }
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        throw new FactoryError("environment_not_found", `Environment ${id} was not found locally.`);
+        throw new SandboxError("environment_not_found", `Environment ${id} was not found locally.`);
       }
-      throw new FactoryError("state_read_failed", `Could not read environment ${id}.`, error);
+      throw new SandboxError("state_read_failed", `Could not read environment ${id}.`, error);
     }
   }
 
@@ -120,7 +120,7 @@ export class EnvironmentStore {
 
   private validateId(id: string): void {
     if (!/^env_[a-z0-9_]+$/.test(id)) {
-      throw new FactoryError("invalid_environment_id", "Environment ID is not valid.");
+      throw new SandboxError("invalid_environment_id", "Environment ID is not valid.");
     }
   }
 }

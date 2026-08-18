@@ -1,4 +1,4 @@
-package factoryd
+package sandboxd
 
 import (
 	"os"
@@ -14,11 +14,11 @@ type Config struct {
 }
 
 func DefaultConfig() Config {
-	stateDir := valueOrDefault(os.Getenv("SALEOR_FACTORY_STATE_DIR"), "/var/lib/saleor-factory")
+	stateDir := valueOrDefault(os.Getenv("SALEOR_SANDBOX_STATE_DIR"), "/var/lib/saleor-sandbox")
 	return Config{
-		RootDir:       valueOrDefault(os.Getenv("SALEOR_FACTORY_ROOT"), "/opt/saleor-factory"),
+		RootDir:       valueOrDefault(os.Getenv("SALEOR_SANDBOX_ROOT"), "/opt/saleor-sandbox"),
 		StateDir:      stateDir,
-		SocketPath:    valueOrDefault(os.Getenv("SALEOR_FACTORY_SOCKET"), "/run/saleor-factory/factoryd.sock"),
+		SocketPath:    valueOrDefault(os.Getenv("SALEOR_SANDBOX_SOCKET"), "/run/saleor-sandbox/sandboxd.sock"),
 		GatewayPort:   8080,
 		CommandRunner: OSRunner{},
 	}

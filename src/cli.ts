@@ -2,7 +2,7 @@
 
 import { Command, CommanderError } from "commander";
 import { loadConfig } from "./config.js";
-import { toFactoryError, FactoryError } from "./domain/errors.js";
+import { toSandboxError, SandboxError } from "./domain/errors.js";
 import type {
   CommandResult,
   CreatePlan,
@@ -12,6 +12,7 @@ import type {
   PruneReport,
 } from "./domain/types.js";
 import { EnvironmentEngine } from "./engine/environment-engine.js";
+import { CliProgress } from "./cli/progress.js";
 import { SpawnCommandRunner } from "./process/command-runner.js";
 import { ExeDevProvider } from "./providers/exedev/exedev-provider.js";
 import { LocalProvider } from "./providers/local/local-provider.js";
@@ -30,7 +31,7 @@ function createEngine(): EnvironmentEngine {
 
 function parseProvider(value: string): ProviderName {
   if (value !== "exedev" && value !== "local") {
-    throw new FactoryError("invalid_provider", "Provider must be exedev or local.");
+    throw new SandboxError("invalid_provider", "Provider must be exedev or local.");
   }
   return value;
 }
@@ -38,7 +39,7 @@ function parseProvider(value: string): ProviderName {
 function parseDuration(value: string): number {
   const match = /^(\d+)(m|h)$/.exec(value);
   if (!match) {
-    throw new FactoryError("invalid_duration", "Duration must look like 30m or 2h.");
+    throw new SandboxError("invalid_duration", "Duration must look like 30m or 2h.");
   }
   const amount = Number(match[1]);
   return match[2] === "h" ? amount * 60 : amount;
@@ -46,7 +47,7 @@ function parseDuration(value: string): number {
 
 function parsePositiveInteger(value: string, label: string): number {
   if (!/^[1-9][0-9]*$/.test(value)) {
-    throw new FactoryError("invalid_number", `${label} must be a positive integer.`);
+    throw new SandboxError("invalid_number", `${label} must be a positive integer.`);
   }
   return Number(value);
 }
@@ -54,7 +55,7 @@ function parsePositiveInteger(value: string, label: string): number {
 function parseHttpMethod(value: string): "GET" | "POST" | "PUT" | "PATCH" | "DELETE" {
   const method = value.toUpperCase();
   if (!new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]).has(method)) {
-    throw new FactoryError("invalid_http_method", "Method must be GET, POST, PUT, PATCH, or DELETE.");
+    throw new SandboxError("invalid_http_method", "Method must be GET, POST, PUT, PATCH, or DELETE.");
   }
   return method as "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 }
@@ -116,10 +117,11 @@ const config = loadConfig();
 const program = new Command();
 
 program
-  .name("factory")
+  .name("sandbox")
   .description("Create disposable Saleor environments for coding agents.")
   .version("0.0.1")
   .option("--provider <name>", "VM provider: exedev or local", config.defaultProvider)
+  .option("--no-progress", "disable progress output")
   .showHelpAfterError()
   .exitOverride();
 
@@ -155,38 +157,46 @@ program
         json?: boolean;
       },
     ) => {
-      if (!options.json) {
+      if (options.dryRun && !options.json) {
         process.stderr.write(`Resolving ${source}...\n`);
       }
-      const result = await engine.create(source, {
-        ttlMinutes: parseDuration(options.ttl),
-        dryRun: options.dryRun ?? false,
-        provider: parseProvider(program.opts<{ provider: string }>().provider),
-      });
-
-      if ("resources" in result) {
-        options.json ? writeJson(result) : printPlan(result);
-        return;
-      }
-
-      let record = result;
-      if (options.wait) {
-        let previousPhase = "";
-        record = await engine.wait(
-          record.id,
-          parsePositiveInteger(options.waitTimeout, "Wait timeout"),
-          5_000,
-          (updated) => {
-            if (!options.json && updated.phase !== previousPhase) {
-              process.stderr.write(`${updated.id}: ${updated.phase}\n`);
-              previousPhase = updated.phase;
-            }
+      const progress = new CliProgress(
+        process.stderr,
+        program.opts<{ progress: boolean }>().progress && !options.dryRun,
+      );
+      progress.start({ phase: "resolving_source", state: "requested" });
+      try {
+        const result = await engine.create(
+          source,
+          {
+            ttlMinutes: parseDuration(options.ttl),
+            dryRun: options.dryRun ?? false,
+            provider: parseProvider(program.opts<{ provider: string }>().provider),
           },
+          (updated) => progress.update(updated),
         );
-      }
-      options.json ? writeJson(record) : printEnvironment(record);
-      if (record.state === "failed") {
-        process.exitCode = 1;
+
+        if ("resources" in result) {
+          options.json ? writeJson(result) : printPlan(result);
+          return;
+        }
+
+        let record = result;
+        if (options.wait) {
+          record = await engine.wait(
+            record.id,
+            parsePositiveInteger(options.waitTimeout, "Wait timeout"),
+            5_000,
+            (updated) => progress.update(updated),
+          );
+        }
+        progress.stop();
+        options.json ? writeJson(record) : printEnvironment(record);
+        if (record.state === "failed") {
+          process.exitCode = 1;
+        }
+      } finally {
+        progress.stop();
       }
     },
   );
@@ -234,21 +244,24 @@ program
   .option("--timeout <minutes>", "maximum wait time", "30")
   .option("--json", "write machine-readable JSON")
   .action(async (id: string, options: { timeout: string; json?: boolean }) => {
-    let previousPhase = "";
-    const record = await engine.wait(
-      id,
-      parsePositiveInteger(options.timeout, "Timeout"),
-      5_000,
-      (updated) => {
-        if (!options.json && updated.phase !== previousPhase) {
-          process.stderr.write(`${updated.id}: ${updated.phase}\n`);
-          previousPhase = updated.phase;
-        }
-      },
+    const progress = new CliProgress(
+      process.stderr,
+      program.opts<{ progress: boolean }>().progress,
     );
-    options.json ? writeJson(record) : printEnvironment(record);
-    if (record.state !== "ready") {
-      process.exitCode = 1;
+    try {
+      const record = await engine.wait(
+        id,
+        parsePositiveInteger(options.timeout, "Timeout"),
+        5_000,
+        (updated) => progress.update(updated),
+      );
+      progress.stop();
+      options.json ? writeJson(record) : printEnvironment(record);
+      if (record.state !== "ready") {
+        process.exitCode = 1;
+      }
+    } finally {
+      progress.stop();
     }
   });
 
@@ -267,13 +280,13 @@ program
       options: { service?: string; phase?: string; tail: string; follow?: boolean; json?: boolean },
     ) => {
       if (options.service && options.phase) {
-        throw new FactoryError("invalid_log_target", "Choose either --service or --phase, not both.");
+        throw new SandboxError("invalid_log_target", "Choose either --service or --phase, not both.");
       }
       if (options.phase && options.phase !== "provision") {
-        throw new FactoryError("invalid_log_target", "The only setup log phase is provision.");
+        throw new SandboxError("invalid_log_target", "The only setup log phase is provision.");
       }
       if (options.follow && options.json) {
-        throw new FactoryError("invalid_output", "Following logs cannot be returned as one JSON value.");
+        throw new SandboxError("invalid_output", "Following logs cannot be returned as one JSON value.");
       }
       const result = await engine.logs(id, {
         ...(options.service ? { service: options.service } : {}),
@@ -401,7 +414,7 @@ try {
       process.exitCode = error.exitCode;
     }
   } else {
-    const failure = toFactoryError(error);
+    const failure = toSandboxError(error);
     if (jsonRequested) {
       writeJson({ error: { code: failure.code, message: failure.message, details: failure.details } });
     } else {

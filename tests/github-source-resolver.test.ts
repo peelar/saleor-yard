@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { FactoryError } from "../src/domain/errors.js";
+import { SandboxError } from "../src/domain/errors.js";
 import { GitHubSourceResolver } from "../src/source/github-source-resolver.js";
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -26,7 +26,7 @@ describe("GitHubSourceResolver", () => {
     });
     expect(fetcher).toHaveBeenCalledWith(
       "https://api.github.com/repos/saleor/saleor/commits/3.23.26",
-      expect.objectContaining({ headers: expect.objectContaining({ "User-Agent": "saleor-factory" }) }),
+      expect.objectContaining({ headers: expect.objectContaining({ "User-Agent": "saleor-sandbox" }) }),
     );
   });
 
@@ -80,7 +80,7 @@ describe("GitHubSourceResolver", () => {
 
     await expect(
       new GitHubSourceResolver(fetcher, undefined).resolve({ kind: "pull_request", value: 123 }),
-    ).rejects.toMatchObject<Partial<FactoryError>>({ code: "unsupported_private_source" });
+    ).rejects.toMatchObject<Partial<SandboxError>>({ code: "unsupported_private_source" });
   });
 
   it("returns a plain not-found error", async () => {
@@ -88,6 +88,6 @@ describe("GitHubSourceResolver", () => {
 
     await expect(
       new GitHubSourceResolver(fetcher, undefined).resolve({ kind: "branch", value: "missing" }),
-    ).rejects.toMatchObject<Partial<FactoryError>>({ code: "source_not_found" });
+    ).rejects.toMatchObject<Partial<SandboxError>>({ code: "source_not_found" });
   });
 });

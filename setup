@@ -1,0 +1,69 @@
+#!/bin/sh
+
+set -eu
+
+show_help() {
+  printf '%s\n' \
+    'Set up Saleor Sandbox for its first run.' \
+    '' \
+    'Usage:' \
+    '  ./setup          Set up the local Lima provider' \
+    '  ./setup local    Set up the local Lima provider' \
+    '  ./setup exedev   Set up the exe.dev provider'
+}
+
+provider="${1:-local}"
+
+case "$provider" in
+  -h|--help)
+    show_help
+    exit 0
+    ;;
+  local|exedev)
+    ;;
+  *)
+    printf 'Unknown provider: %s\n\n' "$provider" >&2
+    show_help >&2
+    exit 2
+    ;;
+esac
+
+if ! command -v node >/dev/null 2>&1; then
+  printf '%s\n' 'Node.js 22 is required. Install it, then run ./setup again.' >&2
+  exit 1
+fi
+
+node_major="$(node -p 'process.versions.node.split(".")[0]')"
+if [ "$node_major" != "22" ]; then
+  printf 'Node.js 22 is required. Found %s.\n' "$(node --version)" >&2
+  exit 1
+fi
+
+if ! command -v corepack >/dev/null 2>&1; then
+  printf '%s\n' 'Corepack is required. Install it, then run ./setup again.' >&2
+  exit 1
+fi
+
+printf '%s\n' 'Installing project dependencies...'
+corepack pnpm install --frozen-lockfile
+
+printf '\nChecking the %s provider...\n' "$provider"
+if ! corepack pnpm sandbox --provider "$provider" doctor; then
+  printf '\nThe project is installed, but the %s provider still needs attention.\n' "$provider" >&2
+  if [ "$provider" = "local" ]; then
+    printf '%s\n' \
+      'Install Lima 2.x with: brew install lima' \
+      'Install and start Docker, then run ./setup again.' >&2
+  else
+    printf '%s\n' \
+      'Set up SSH access to exe.dev, then run ./setup exedev again.' >&2
+  fi
+  exit 1
+fi
+
+printf '\nSaleor Sandbox is ready. Try:\n'
+if [ "$provider" = "local" ]; then
+  printf '%s\n' '  pnpm sandbox create pr:19668 --ttl 30m --dry-run --json'
+else
+  printf '%s\n' '  pnpm sandbox --provider exedev create pr:19668 --ttl 30m --dry-run --json'
+fi

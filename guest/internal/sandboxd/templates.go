@@ -1,4 +1,4 @@
-package factoryd
+package sandboxd
 
 import (
 	"fmt"
@@ -34,7 +34,7 @@ func nginxConfiguration(job Job) string {
 func composeOverride(job Job) string {
 	return fmt.Sprintf(`services:
   api:
-    image: saleor-factory-core:%s
+    image: saleor-sandbox-core:%s
     environment:
       ALLOWED_HOSTS: "*"
       ALLOWED_CLIENT_HOSTS: "*"
@@ -42,7 +42,7 @@ func composeOverride(job Job) string {
       PUBLIC_URL: "%s"
       HTTP_IP_FILTER_ENABLED: "False"
   worker:
-    image: saleor-factory-core:%s
+    image: saleor-sandbox-core:%s
   dashboard:
     image: ghcr.io/saleor/saleor-dashboard:%s
     environment:
@@ -57,7 +57,7 @@ func composeOverride(job Job) string {
     ports:
       - "8080:80"
     volumes:
-      - ./factory.nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./sandbox.nginx.conf:/etc/nginx/conf.d/default.conf:ro
     networks:
       - default
       - saleor-backend-tier

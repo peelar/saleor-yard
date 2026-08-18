@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { FactoryError } from "../../domain/errors.js";
+import { SandboxError } from "../../domain/errors.js";
 import type {
   CommandResult,
   CreatePlan,
@@ -18,7 +18,7 @@ import type { EnvironmentProvider } from "../environment-provider.js";
 
 const platformCommit = "ab6315bd59c58b4815175df4c679107ff9695be4";
 const defaultDashboardTag = "3.23";
-const defaultImage = "ghcr.io/saleor/saleor-factory-exedev:0.1.0";
+const defaultImage = "ghcr.io/saleor/saleor-sandbox-exedev:0.1.0";
 const sshOptions = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=15"];
 
 const providerStatusSchema = z.object({
@@ -76,7 +76,7 @@ function parseJsonOutput(output: string): unknown {
       }
     }
   }
-  throw new FactoryError("provider_response_invalid", "exe.dev returned output that was not JSON.");
+  throw new SandboxError("provider_response_invalid", "exe.dev returned output that was not JSON.");
 }
 
 function findString(object: unknown, keys: string[]): string | undefined {
@@ -105,7 +105,7 @@ function remoteCommand(arguments_: string[]): string {
 
 function requireProviderEnvironment(record: EnvironmentRecord): ExeDevProviderEnvironment {
   if (!record.providerEnvironment || record.providerEnvironment.provider !== "exedev") {
-    throw new FactoryError(
+    throw new SandboxError(
       "environment_not_provisioned",
       `Environment ${record.id} does not have an exe.dev VM yet.`,
     );
@@ -116,7 +116,7 @@ function requireProviderEnvironment(record: EnvironmentRecord): ExeDevProviderEn
 function validateService(service: string): void {
   const allowed = new Set(["api", "worker", "db", "cache", "dashboard", "gateway", "mailpit", "jaeger"]);
   if (!allowed.has(service)) {
-    throw new FactoryError("invalid_service", `Unknown Saleor service: ${service}.`);
+    throw new SandboxError("invalid_service", `Unknown Saleor service: ${service}.`);
   }
 }
 
@@ -136,7 +136,7 @@ export class ExeDevProvider implements EnvironmentProvider {
     this.memoryGb = options.memoryGb ?? 8;
     this.diskGb = options.diskGb ?? 40;
     this.gatewayPort = options.gatewayPort ?? 8080;
-    this.image = options.image ?? process.env.SALEOR_FACTORY_EXEDEV_IMAGE ?? defaultImage;
+    this.image = options.image ?? process.env.SALEOR_SANDBOX_EXEDEV_IMAGE ?? defaultImage;
   }
 
   async doctor(): Promise<DoctorReport> {
@@ -192,7 +192,7 @@ export class ExeDevProvider implements EnvironmentProvider {
       `--memory=${this.memoryGb}GB`,
       `--disk=${this.diskGb}GB`,
       `--image=${this.image}`,
-      "--tag=saleor-factory",
+      "--tag=saleor-sandbox",
       `--comment=${record.source.requested} at ${record.source.commit.slice(0, 12)}`,
       "--no-email",
       "--json",
@@ -200,7 +200,7 @@ export class ExeDevProvider implements EnvironmentProvider {
 
     const creation = await this.runner.run("ssh", args, { timeoutMs: 120_000 });
     if (creation.exitCode !== 0) {
-      throw new FactoryError(
+      throw new SandboxError(
         "provider_create_failed",
         creation.stderr.trim() || "exe.dev could not create the VM.",
       );
@@ -213,7 +213,7 @@ export class ExeDevProvider implements EnvironmentProvider {
 
     try {
       await this.configurePrivateGateway(name);
-      await this.waitForFactoryd(sshDestination);
+      await this.waitForSandboxd(sshDestination);
       const job = JSON.stringify({
         environmentId: record.id,
         cloneUrl: record.source.cloneUrl,
@@ -228,14 +228,14 @@ export class ExeDevProvider implements EnvironmentProvider {
         [
           ...sshOptions,
           sshDestination,
-          remoteCommand(["sudo", "factoryd", "provision", "--job", "-"]),
+          remoteCommand(["sudo", "sandboxd", "provision", "--job", "-"]),
         ],
         { input: job, timeoutMs: 30_000 },
       );
       if (provision.exitCode !== 0) {
-        throw new FactoryError(
+        throw new SandboxError(
           "guest_provision_failed",
-          provision.stderr.trim() || "factoryd did not accept the provisioning job.",
+          provision.stderr.trim() || "sandboxd did not accept the provisioning job.",
         );
       }
     } catch (error) {
@@ -268,7 +268,7 @@ export class ExeDevProvider implements EnvironmentProvider {
       [
         ...sshOptions,
         environment.sshDestination,
-        remoteCommand(["sudo", "factoryd", "status"]),
+        remoteCommand(["sudo", "sandboxd", "status"]),
       ],
       { timeoutMs: 20_000 },
     );
@@ -281,9 +281,9 @@ export class ExeDevProvider implements EnvironmentProvider {
     }
     const parsed = providerStatusSchema.parse(parseJsonOutput(result.stdout));
     if (parsed.commit && parsed.commit !== record.source.commit) {
-      throw new FactoryError(
+      throw new SandboxError(
         "guest_commit_mismatch",
-        `factoryd reports ${parsed.commit}, but ${record.source.commit} was requested.`,
+        `sandboxd reports ${parsed.commit}, but ${record.source.commit} was requested.`,
       );
     }
     if (parsed.state === "requested") {
@@ -301,9 +301,9 @@ export class ExeDevProvider implements EnvironmentProvider {
     if (options.service) {
       validateService(options.service);
     }
-    const factorydCommand = [
+    const sandboxdCommand = [
       "sudo",
-      "factoryd",
+      "sandboxd",
       "logs",
       "--tail",
       String(options.tail),
@@ -313,7 +313,7 @@ export class ExeDevProvider implements EnvironmentProvider {
     ];
     return this.runner.run(
       "ssh",
-      [...sshOptions, environment.sshDestination, remoteCommand(factorydCommand)],
+      [...sshOptions, environment.sshDestination, remoteCommand(sandboxdCommand)],
       { inherit: options.follow },
     );
   }
@@ -321,18 +321,18 @@ export class ExeDevProvider implements EnvironmentProvider {
   async exec(record: EnvironmentRecord, command: string[]): Promise<CommandResult> {
     const environment = requireProviderEnvironment(record);
     if (command.length === 0) {
-      throw new FactoryError("missing_command", "Provide a command after --.");
+      throw new SandboxError("missing_command", "Provide a command after --.");
     }
-    const remote = ["sudo", "factoryd", "exec", "--request", "-"];
+    const remote = ["sudo", "sandboxd", "exec", "--request", "-"];
     const result = await this.runner.run(
       "ssh",
       [...sshOptions, environment.sshDestination, remoteCommand(remote)],
       { input: JSON.stringify({ service: "api", command }) },
     );
     if (result.exitCode !== 0) {
-      throw new FactoryError(
+      throw new SandboxError(
         "guest_exec_failed",
-        result.stderr.trim() || "factoryd could not run the command.",
+        result.stderr.trim() || "sandboxd could not run the command.",
       );
     }
     return commandResultSchema.parse(parseJsonOutput(result.stdout));
@@ -348,14 +348,14 @@ export class ExeDevProvider implements EnvironmentProvider {
       [
         ...sshOptions,
         environment.sshDestination,
-        remoteCommand(["sudo", "factoryd", "http", "--request", "-"]),
+        remoteCommand(["sudo", "sandboxd", "http", "--request", "-"]),
       ],
       { input: JSON.stringify(request), timeoutMs: 60_000 },
     );
     if (result.exitCode !== 0) {
-      throw new FactoryError(
+      throw new SandboxError(
         "guest_http_failed",
-        result.stderr.trim() || "factoryd could not make the HTTP request.",
+        result.stderr.trim() || "sandboxd could not make the HTTP request.",
       );
     }
     return httpResponseSchema.parse(parseJsonOutput(result.stdout));
@@ -392,7 +392,7 @@ export class ExeDevProvider implements EnvironmentProvider {
       { timeoutMs: 60_000 },
     );
     if (result.exitCode !== 0 && !/not found|does not exist/i.test(result.stderr)) {
-      throw new FactoryError(
+      throw new SandboxError(
         "provider_destroy_failed",
         result.stderr.trim() || `exe.dev could not delete ${environment.name}.`,
       );
@@ -415,7 +415,7 @@ export class ExeDevProvider implements EnvironmentProvider {
       { timeoutMs: 30_000 },
     );
     if (port.exitCode !== 0) {
-      throw new FactoryError(
+      throw new SandboxError(
         "provider_gateway_failed",
         port.stderr.trim() || "exe.dev could not configure the private gateway port.",
       );
@@ -427,21 +427,21 @@ export class ExeDevProvider implements EnvironmentProvider {
       { timeoutMs: 30_000 },
     );
     if (privacy.exitCode !== 0) {
-      throw new FactoryError(
+      throw new SandboxError(
         "provider_gateway_failed",
         privacy.stderr.trim() || "exe.dev could not make the gateway private.",
       );
     }
   }
 
-  private async waitForFactoryd(sshDestination: string): Promise<void> {
+  private async waitForSandboxd(sshDestination: string): Promise<void> {
     for (let attempt = 1; attempt <= 30; attempt += 1) {
       const result = await this.runner.run(
         "ssh",
         [
           ...sshOptions,
           sshDestination,
-          remoteCommand(["sudo", "factoryd", "status"]),
+          remoteCommand(["sudo", "sandboxd", "status"]),
         ],
         { timeoutMs: 20_000 },
       );
@@ -450,9 +450,9 @@ export class ExeDevProvider implements EnvironmentProvider {
       }
       await new Promise((resolve) => setTimeout(resolve, 2_000));
     }
-    throw new FactoryError(
+    throw new SandboxError(
       "guest_unavailable",
-      "The VM started, but the factoryd guest runtime did not become available.",
+      "The VM started, but the sandboxd guest runtime did not become available.",
     );
   }
 }
