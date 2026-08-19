@@ -23,7 +23,7 @@ starts a fresh Saleor stack, and gives you Dashboard, GraphQL, logs, remote
 commands inside the VM, and a clear way to delete everything when you are done.
 
 ```bash
-pnpm saleor-yard create release:3.21.69
+saleor-yard create release:3.21.69
 ```
 
 ## Why use it?
@@ -55,21 +55,24 @@ The default environment is intentionally small: 2 CPUs, 4 GB of memory, and a
 You need Node.js 22, Lima 2.x, and Docker on macOS.
 
 ```bash
-./setup
-pnpm saleor-yard create release:3.21.69 --ttl 2h
+curl -fsSL https://raw.githubusercontent.com/peelar/saleor-yard/main/install | sh
+saleor-yard create release:3.21.69 --ttl 2h
 ```
 
-`./setup` installs the exact pnpm version and project dependencies, then checks
-Lima and Docker. If a system tool is missing, it prints the next step. It does
+The install script clones the repository to `~/.saleor-yard`, builds the
+bundled CLI, and puts a `saleor-yard` command on your PATH. The checkout stays:
+the local provider builds the guest runtime from it when an environment is
+created. Re-run the same command to update. The script ends with a Lima and
+Docker check. If a system tool is missing, it prints the next step. It does
 not install system tools or change credentials.
 
 You can create an environment from any supported source:
 
 ```bash
-pnpm saleor-yard create release:3.23.26 --ttl 2h
-pnpm saleor-yard create branch:main --ttl 2h
-pnpm saleor-yard create commit:eaaf809e91802745618e8b5390afccc80812d4f9 --ttl 2h
-pnpm saleor-yard create pr:19668 --ttl 2h
+saleor-yard create release:3.23.26 --ttl 2h
+saleor-yard create branch:main --ttl 2h
+saleor-yard create commit:eaaf809e91802745618e8b5390afccc80812d4f9 --ttl 2h
+saleor-yard create pr:19668 --ttl 2h
 ```
 
 Add `--dry-run` to resolve the source and inspect the plan without allocating an
@@ -83,27 +86,27 @@ want to return while it is still provisioning.
 Every create command returns an environment ID. Use that ID for later commands:
 
 ```bash
-pnpm saleor-yard status env_abc123 --json
-pnpm saleor-yard logs env_abc123 --service api
-pnpm saleor-yard logs env_abc123 --setup
-pnpm saleor-yard exec env_abc123 -- python manage.py check
-pnpm saleor-yard http env_abc123 POST /graphql/ \
+saleor-yard status env_abc123 --json
+saleor-yard logs env_abc123 --service api
+saleor-yard logs env_abc123 --setup
+saleor-yard exec env_abc123 -- python manage.py check
+saleor-yard http env_abc123 POST /graphql/ \
   --data '{"query":"{ shop { name } }"}' --json
-pnpm saleor-yard tunnel env_abc123
-pnpm saleor-yard destroy env_abc123
+saleor-yard tunnel env_abc123
+saleor-yard destroy env_abc123
 ```
 
 The interactive create command prints the environment ID before long setup work
-starts. If another terminal needs it, `pnpm saleor-yard list` prints saved IDs in
+starts. If another terminal needs it, `saleor-yard list` prints saved IDs in
 the first column.
 
 Delete every Saleor Yard environment and any safely identified orphan:
 
 ```bash
-pnpm saleor-yard destroy --all
+saleor-yard destroy --all
 ```
 
-For continuous expiry cleanup, run `pnpm saleor-yard expiry-worker --interval 1m`
+For continuous expiry cleanup, run `saleor-yard expiry-worker --interval 1m`
 under a process manager. The future private service will run the same worker.
 Yard also removes expired environments automatically before every new create.
 
@@ -144,5 +147,10 @@ The product contract is in [`SPEC.md`](SPEC.md). More detail is available in:
 pnpm check
 pnpm saleor-yard create pr:19668 --ttl 30m --dry-run --json
 ```
+
+`pnpm build` bundles the CLI into one self-contained file at `dist/cli.cjs`
+with tsup. Every dependency is inlined, so the file runs on Node.js 22 alone,
+without `node_modules`. The `install` script builds this bundle and links it
+onto your PATH.
 
 The local Lima provider is currently the only supported provider.

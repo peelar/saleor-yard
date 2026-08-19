@@ -5,15 +5,18 @@ agent can control without learning Lima or Docker Compose.
 
 ## Before the first run
 
-Install Node.js 22, then run the one-command local setup:
+Install Node.js 22, then install the `saleor-yard` command:
 
 ```bash
-./setup
+curl -fsSL https://raw.githubusercontent.com/peelar/saleor-yard/main/install | sh
 ```
 
-The script installs the exact pnpm version and project dependencies, then checks
-Lima and Docker. If one is missing, it tells you what to do next. It does not
-install system tools or change credentials.
+The script clones the repository to `~/.saleor-yard`, builds the bundled CLI,
+and puts a `saleor-yard` command on your PATH. The checkout stays: the local
+provider builds the guest runtime from it when an environment is created.
+Re-run the same command to update. The script ends with a provider check; if
+Lima or Docker is missing, it tells you what to do next. It does not install
+system tools or change credentials.
 
 The local provider needs Lima 2.x and Docker. On macOS, install Lima with
 `brew install lima`. Saleor runs inside a Linux VM, not directly on macOS.
@@ -24,7 +27,7 @@ Start with a dry run. It resolves the source to an exact commit and shows what
 would be created, but it does not allocate an environment.
 
 ```bash
-pnpm saleor-yard create pr:19668 --ttl 30m --dry-run --json
+saleor-yard create pr:19668 --ttl 30m --dry-run --json
 ```
 
 The local provider uses a small default environment: 2 CPUs, 4 GB of
@@ -34,7 +37,7 @@ issue reproduction, not production traffic or load testing.
 For a real environment:
 
 ```bash
-pnpm saleor-yard create pr:19668 --ttl 2h --json
+saleor-yard create pr:19668 --ttl 2h --json
 ```
 
 While it works, Yard shows one live progress line with a spinner, lifecycle
@@ -58,28 +61,28 @@ provider option.
 Check progress:
 
 ```bash
-pnpm saleor-yard status env_abc123 --json
-pnpm saleor-yard wait env_abc123 --timeout 30 --json
+saleor-yard status env_abc123 --json
+saleor-yard wait env_abc123 --timeout 30 --json
 ```
 
 Read setup and service logs:
 
 ```bash
-pnpm saleor-yard logs env_abc123 --setup
-pnpm saleor-yard logs env_abc123 --service api --tail 200
-pnpm saleor-yard logs env_abc123 --service worker --follow
+saleor-yard logs env_abc123 --setup
+saleor-yard logs env_abc123 --service api --tail 200
+saleor-yard logs env_abc123 --service worker --follow
 ```
 
 Run a command in the Saleor API container:
 
 ```bash
-pnpm saleor-yard exec env_abc123 -- python manage.py check
+saleor-yard exec env_abc123 -- python manage.py check
 ```
 
 Make a GraphQL request without opening a browser:
 
 ```bash
-pnpm saleor-yard http env_abc123 POST /graphql/ \
+saleor-yard http env_abc123 POST /graphql/ \
   --data '{"query":"{ shop { name } }"}' --json
 ```
 
@@ -91,7 +94,7 @@ once.
 Use `status` to print the exact URLs.
 
 ```bash
-pnpm saleor-yard status env_abc123
+saleor-yard status env_abc123
 ```
 
 Running `saleor-yard tunnel env_abc123` for a local environment only prints the
@@ -104,20 +107,20 @@ Use `--json` when a script needs the access URLs as one machine-readable value.
 Delete one environment:
 
 ```bash
-pnpm saleor-yard destroy env_abc123 --json
+saleor-yard destroy env_abc123 --json
 ```
 
 Delete every Saleor Yard environment, including safely identified orphaned
 provider resources:
 
 ```bash
-pnpm saleor-yard destroy --all --json
+saleor-yard destroy --all --json
 ```
 
 Delete every saved environment whose lifetime has passed:
 
 ```bash
-pnpm saleor-yard prune --json
+saleor-yard prune --json
 ```
 
 `create` runs this expiry cleanup automatically before allocating a new
@@ -127,7 +130,7 @@ could not be removed.
 Run cleanup continuously:
 
 ```bash
-pnpm saleor-yard expiry-worker --interval 1m
+saleor-yard expiry-worker --interval 1m
 ```
 
 With `--json`, it writes one JSON object per check. Normal progress and failures

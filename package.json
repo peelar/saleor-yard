@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "bin": {
-    "saleor-yard": "./dist/cli.js"
+    "saleor-yard": "./dist/cli.cjs"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsup",
     "build:guest": "docker build --target build -f images/local/Dockerfile .",
     "build:local-guest": "docker build -f images/local/Dockerfile --output type=local,dest=dist/local-guest .",
     "check": "pnpm typecheck && pnpm test && pnpm build",
@@ -28,6 +28,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.18.0",
+    "tsup": "^8.5.1",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"

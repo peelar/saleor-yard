@@ -1,0 +1,109 @@
+#!/bin/sh
+
+set -eu
+
+show_help() {
+  printf '%s\n' \
+    'Install Saleor Yard so the saleor-yard command is on your PATH.' \
+    '' \
+    'Usage:' \
+    '  ./install          Install or update Saleor Yard' \
+    '' \
+    'The repository is kept after installation. The local provider builds' \
+    'the guest runtime from it when an environment is created.' \
+    '' \
+    'Environment overrides:' \
+    '  SALEOR_YARD_REPO         GitHub repository (default: peelar/saleor-yard)' \
+    '  SALEOR_YARD_REF          Git ref to install (default: main)' \
+    '  SALEOR_YARD_INSTALL_DIR  Checkout location (default: ~/.saleor-yard)' \
+    '  SALEOR_YARD_BIN_DIR      Command location (default: ~/.local/bin)'
+}
+
+case "${1:-}" in
+  "")
+    ;;
+  -h|--help)
+    show_help
+    exit 0
+    ;;
+  *)
+    printf 'Unknown argument: %s\n\n' "$1" >&2
+    show_help >&2
+    exit 2
+    ;;
+esac
+
+repo="${SALEOR_YARD_REPO:-peelar/saleor-yard}"
+ref="${SALEOR_YARD_REF:-main}"
+install_dir="${SALEOR_YARD_INSTALL_DIR:-$HOME/.saleor-yard}"
+bin_dir="${SALEOR_YARD_BIN_DIR:-$HOME/.local/bin}"
+checkout="$install_dir/repo"
+
+if ! command -v node >/dev/null 2>&1; then
+  printf '%s\n' 'Node.js 22 is required. Install it, then run this script again.' >&2
+  exit 1
+fi
+
+node_major="$(node -p 'process.versions.node.split(".")[0]')"
+if [ "$node_major" != "22" ]; then
+  printf 'Node.js 22 is required. Found %s.\n' "$(node --version)" >&2
+  exit 1
+fi
+
+if ! command -v git >/dev/null 2>&1; then
+  printf '%s\n' 'Git is required. Install it, then run this script again.' >&2
+  exit 1
+fi
+
+if ! command -v corepack >/dev/null 2>&1; then
+  printf '%s\n' 'Corepack is required. Install it, then run this script again.' >&2
+  exit 1
+fi
+
+mkdir -p "$install_dir" "$bin_dir"
+
+if [ -d "$checkout/.git" ]; then
+  printf 'Updating %s (%s)...\n' "$repo" "$ref"
+  git -C "$checkout" fetch --depth 1 origin "$ref"
+  git -C "$checkout" checkout --force FETCH_HEAD
+else
+  printf 'Cloning %s (%s)...\n' "$repo" "$ref"
+  git clone --depth 1 --branch "$ref" "https://github.com/$repo.git" "$checkout"
+fi
+
+printf '%s\n' 'Building the saleor-yard command...'
+(
+  cd "$checkout"
+  corepack pnpm install --frozen-lockfile
+  corepack pnpm build
+)
+
+cat > "$bin_dir/saleor-yard" <<EOF
+#!/bin/sh
+# The CLI needs the repository checkout at run time: the local provider
+# builds the guest runtime from images/local/Dockerfile in it.
+cd "$checkout" && exec node "$checkout/dist/cli.cjs" "\$@"
+EOF
+chmod +x "$bin_dir/saleor-yard"
+
+printf 'Installed %s\n' "$bin_dir/saleor-yard"
+
+case ":$PATH:" in
+  *":$bin_dir:"*)
+    ;;
+  *)
+    printf 'Add %s to your PATH to use the saleor-yard command.\n' "$bin_dir" >&2
+    ;;
+esac
+
+printf '\nChecking the local provider...\n'
+if ! "$bin_dir/saleor-yard" doctor; then
+  printf '\nThe command is installed, but the local provider still needs attention.\n' >&2
+  printf '%s\n' \
+    'Install Lima 2.x with: brew install lima' \
+    'Install and start Docker, then run: saleor-yard doctor' >&2
+  exit 1
+fi
+
+printf '\nInstallation is complete. Try a dry run:\n'
+printf '%s\n' '  saleor-yard create pr:19668 --ttl 30m --dry-run --json'

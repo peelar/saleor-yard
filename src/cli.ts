@@ -513,31 +513,35 @@ program
     options.json ? writeJson(record) : printEnvironment(record);
   });
 
-try {
-  await program.parseAsync(process.argv);
-} catch (error) {
-  if (error instanceof CommanderError) {
-    if (error.code === "commander.helpDisplayed" || error.code === "commander.version") {
-      process.exitCode = 0;
-    } else if (jsonRequested) {
-      writeJson({
-        error: {
-          code: error.code,
-          message: error.message,
-        },
-      });
-      process.exitCode = error.exitCode;
+async function main(): Promise<void> {
+  try {
+    await program.parseAsync(process.argv);
+  } catch (error) {
+    if (error instanceof CommanderError) {
+      if (error.code === "commander.helpDisplayed" || error.code === "commander.version") {
+        process.exitCode = 0;
+      } else if (jsonRequested) {
+        writeJson({
+          error: {
+            code: error.code,
+            message: error.message,
+          },
+        });
+        process.exitCode = error.exitCode;
+      } else {
+        process.exitCode = error.exitCode;
+      }
     } else {
-      process.exitCode = error.exitCode;
+      const failure = toYardError(error);
+      if (jsonRequested) {
+        writeJson({ error: { code: failure.code, message: failure.message, details: failure.details } });
+      } else {
+        process.stderr.write(`Error: ${failure.message}\n`);
+        printFailureGuidance(failure.details);
+      }
+      process.exitCode = 1;
     }
-  } else {
-    const failure = toYardError(error);
-    if (jsonRequested) {
-      writeJson({ error: { code: failure.code, message: failure.message, details: failure.details } });
-    } else {
-      process.stderr.write(`Error: ${failure.message}\n`);
-      printFailureGuidance(failure.details);
-    }
-    process.exitCode = 1;
   }
 }
+
+void main();
