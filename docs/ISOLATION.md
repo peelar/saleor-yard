@@ -6,7 +6,7 @@ untrusted, so every environment needs a strong isolation boundary.
 ## VMs and Dev Containers
 
 A Dev Container describes development tools, files, and setup commands. It can
-make an investigation workspace easier to use, but it is not a security
+make an agent workspace easier to use, but it is not a security
 boundary. By itself, it does not provide Factory's private access, expiry,
 cleanup, or Saleor readiness contract.
 

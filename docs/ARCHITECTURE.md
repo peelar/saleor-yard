@@ -64,6 +64,10 @@ Both adapters return their own access details. The engine does not invent an
 exe.dev URL or assume that every provider uses SSH. The first version did both;
 building the local adapter exposed and removed those assumptions.
 
+Both adapters use the same default resource profile: 2 CPUs, 4 GB of memory,
+and a 20 GB disk. The shared value lives at the provider boundary so local and
+remote environments do not drift apart.
+
 ### Local state store
 
 The local CLI needs to remember the connection between a Sandbox environment ID
@@ -99,8 +103,8 @@ local HTTP requests.
 
 After the Core image is built, the guest removes unused Docker build cache. The
 cache is not useful in today's one-build disposable environment. The Saleor
-worker uses one process because this environment is meant for investigation,
-not production traffic.
+worker has a concurrency of one because this environment is meant for
+development, not production traffic.
 
 The guest runtime is a small static Go binary. It uses typed process arguments
 when it must call Git or Docker Compose. There are no generated shell commands

@@ -1,4 +1,4 @@
-export const investigationResources = {
+export const defaultResourceProfile = {
   cpu: 2,
   memoryGb: 4,
   diskGb: 20,

@@ -26,12 +26,12 @@ func TestComposeOverrideUsesTheExactCoreAndDashboardVersions(t *testing.T) {
 	}
 }
 
-func TestInvestigationWorkerUsesOneProcess(t *testing.T) {
+func TestDefaultWorkerUsesOneTaskSlot(t *testing.T) {
 	t.Parallel()
 	result := composeOverride(validJob())
 	worker := result[strings.Index(result, "  worker:"):strings.Index(result, "  dashboard:")]
 	if !strings.Contains(worker, "--concurrency=1") {
-		t.Fatal("the investigation worker must use one process")
+		t.Fatal("the default worker must use one task slot")
 	}
 }
 

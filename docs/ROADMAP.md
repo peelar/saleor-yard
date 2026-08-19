@@ -22,7 +22,7 @@ Work order:
 7. [x] Run local tests and build the complete VM image.
 8. [x] Add a Lima provider to prove the design is not tied to exe.dev.
 9. [x] Complete the first live local environment proof.
-10. [ ] Prove a smaller investigation resource profile under a real workload.
+10. [x] Prove a smaller default resource profile under a real workload.
 11. [ ] Publish an immutable exe.dev VM image.
 12. [ ] Complete one live exe.dev environment proof.
 

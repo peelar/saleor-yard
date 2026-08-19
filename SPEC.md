@@ -51,6 +51,16 @@ isolation setup, or provider commands during normal use.
 - Recorded TTL, explicit destruction, and an expiry cleanup operation.
 - Human-readable output and stable JSON output.
 
+### Default resource profile
+
+The current local and exe.dev providers start with 2 CPUs, 4 GB of memory, and
+a 20 GB disk. This default profile supports a small catalog and simple queries.
+It is not production sizing.
+
+The profile must still pass the complete readiness contract. If future Saleor
+versions need more room, change the shared profile from measured evidence
+rather than changing one provider alone.
+
 ### Not Included
 
 - Private repositories or private forks.

@@ -28,7 +28,7 @@ pnpm sandbox create pr:19668 --ttl 2h
 
 ## Why use it?
 
-For humans, Saleor Sandbox is a clean place to investigate a bug, compare
+For humans, Saleor Sandbox is a clean place to debug an issue, compare
 versions, or try a pull request without rebuilding a local setup by hand.
 
 For coding agents, it is a stable tool with structured JSON output. An agent can
@@ -49,6 +49,9 @@ Every sandbox includes:
 Pull request code is treated as untrusted. Provider credentials are never copied
 into the created environment, and a sandbox is not reported as ready until its
 readiness checks pass.
+
+The default environment is intentionally small: 2 CPUs, 4 GB of memory, and a
+20 GB disk. It is sized for development, not production Saleor traffic.
 
 ### Trust boundary
 

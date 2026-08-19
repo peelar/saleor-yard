@@ -20,7 +20,7 @@ import type {
 } from "../../domain/types.js";
 import type { CommandRunner } from "../../process/command-runner.js";
 import type { EnvironmentProvider } from "../environment-provider.js";
-import { investigationResources } from "../investigation-resources.js";
+import { defaultResourceProfile } from "../default-resource-profile.js";
 
 const platformCommit = "ab6315bd59c58b4815175df4c679107ff9695be4";
 const defaultDashboardTag = "3.23";
@@ -84,9 +84,9 @@ export class LocalProvider implements EnvironmentProvider {
   private readonly sandboxdBinary: string | undefined;
 
   constructor(private readonly runner: CommandRunner, options: LocalProviderOptions = {}) {
-    this.cpu = options.cpu ?? investigationResources.cpu;
-    this.memoryGb = options.memoryGb ?? investigationResources.memoryGb;
-    this.diskGb = options.diskGb ?? investigationResources.diskGb;
+    this.cpu = options.cpu ?? defaultResourceProfile.cpu;
+    this.memoryGb = options.memoryGb ?? defaultResourceProfile.memoryGb;
+    this.diskGb = options.diskGb ?? defaultResourceProfile.diskGb;
     this.configuredPorts = options.ports;
     this.projectRoot = options.projectRoot ?? resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
     this.sandboxdBinary = options.sandboxdBinary ?? process.env.SALEOR_SANDBOX_LOCAL_SANDBOXD;

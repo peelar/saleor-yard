@@ -15,7 +15,7 @@ import type {
 } from "../../domain/types.js";
 import type { CommandRunner } from "../../process/command-runner.js";
 import type { EnvironmentProvider } from "../environment-provider.js";
-import { investigationResources } from "../investigation-resources.js";
+import { defaultResourceProfile } from "../default-resource-profile.js";
 
 const platformCommit = "ab6315bd59c58b4815175df4c679107ff9695be4";
 const defaultDashboardTag = "3.23";
@@ -142,9 +142,9 @@ export class ExeDevProvider implements EnvironmentProvider {
     private readonly runner: CommandRunner,
     options: ExeDevProviderOptions = {},
   ) {
-    this.cpu = options.cpu ?? investigationResources.cpu;
-    this.memoryGb = options.memoryGb ?? investigationResources.memoryGb;
-    this.diskGb = options.diskGb ?? investigationResources.diskGb;
+    this.cpu = options.cpu ?? defaultResourceProfile.cpu;
+    this.memoryGb = options.memoryGb ?? defaultResourceProfile.memoryGb;
+    this.diskGb = options.diskGb ?? defaultResourceProfile.diskGb;
     this.gatewayPort = options.gatewayPort ?? 8080;
     this.image = options.image ?? process.env.SALEOR_SANDBOX_EXEDEV_IMAGE ?? defaultImage;
   }

@@ -43,6 +43,10 @@ would be created, but it does not allocate an environment.
 pnpm sandbox create pr:19668 --ttl 30m --dry-run --json
 ```
 
+Both providers currently use a small default environment: 2 CPUs, 4 GB of
+memory, and a 20 GB disk. It is meant for small catalogs, simple queries, and
+issue reproduction, not production traffic or load testing.
+
 For a real environment:
 
 ```bash
