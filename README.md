@@ -4,7 +4,7 @@
 
 <h1 align="center">Saleor Yard</h1>
 
-<p align="center"><strong>One source. One exact commit. One disposable Saleor environment.</strong></p>
+<p align="center"><strong>A CLI for humans and agents to create disposable Saleor environments.</strong></p>
 
 <p align="center">
   <img alt="Status: early preview" src="https://img.shields.io/badge/status-early_preview-ff6846">
@@ -13,10 +13,10 @@
 </p>
 
 Saleor Yard creates a temporary, private Saleor environment from a public
-release, branch, commit, or pull request. Use it when a human developer or a
-coding agent needs to reproduce a bug, review a pull request, test a change, or
-explore a specific Saleor version without touching a shared development or
-production environment.
+release, branch, commit, or pull request. It runs inside either a local VM
+or a remote exe.dev VM. Use it when a human developer or a coding agent needs to
+reproduce a bug, review a pull request, test a change, or explore a specific
+Saleor version without touching a shared development or production environment.
 
 Give it a source such as `pr:19668`. It resolves that source to one exact commit,
 starts a fresh Saleor stack, and gives you Dashboard, GraphQL, logs, remote
