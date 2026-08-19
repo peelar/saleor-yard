@@ -32,7 +32,7 @@ function record(id = "env_20260818120000_abc123"): EnvironmentRecord {
 
 describe("EnvironmentStore", () => {
   it("round-trips a validated record with private file permissions", async () => {
-    const root = await mkdtemp(join(tmpdir(), "saleor-sandbox-store-"));
+    const root = await mkdtemp(join(tmpdir(), "saleor-yard-store-"));
     const store = new EnvironmentStore(root);
     const value = record();
 
@@ -43,7 +43,7 @@ describe("EnvironmentStore", () => {
   });
 
   it("does not allow path traversal through an environment ID", async () => {
-    const root = await mkdtemp(join(tmpdir(), "saleor-sandbox-store-"));
+    const root = await mkdtemp(join(tmpdir(), "saleor-yard-store-"));
     const store = new EnvironmentStore(root);
 
     await expect(store.get("../../secret")).rejects.toMatchObject({
@@ -52,7 +52,7 @@ describe("EnvironmentStore", () => {
   });
 
   it("reads records written with the old VM-specific phase", async () => {
-    const root = await mkdtemp(join(tmpdir(), "saleor-sandbox-store-"));
+    const root = await mkdtemp(join(tmpdir(), "saleor-yard-store-"));
     const value = record();
     await writeFile(
       join(root, `${value.id}.json`),
@@ -65,14 +65,14 @@ describe("EnvironmentStore", () => {
   });
 
   it("round-trips local provider connection and access details", async () => {
-    const root = await mkdtemp(join(tmpdir(), "saleor-sandbox-store-"));
+    const root = await mkdtemp(join(tmpdir(), "saleor-yard-store-"));
     const store = new EnvironmentStore(root);
     const value = record();
     value.provider = "local";
     value.providerEnvironment = {
       provider: "local",
-      providerId: "sf-pr-123-abc123",
-      name: "sf-pr-123-abc123",
+      providerId: "sy-pr-123-abc123",
+      name: "sy-pr-123-abc123",
       ports: { gateway: 28080, core: 28000, mailpit: 28025, jaeger: 28686 },
     };
     value.access = {
@@ -89,7 +89,7 @@ describe("EnvironmentStore", () => {
   });
 
   it("lists newest records first", async () => {
-    const root = await mkdtemp(join(tmpdir(), "saleor-sandbox-store-"));
+    const root = await mkdtemp(join(tmpdir(), "saleor-yard-store-"));
     const store = new EnvironmentStore(root);
     const older = record("env_20260818110000_aaaaaa");
     const newer = record("env_20260818120000_bbbbbb");

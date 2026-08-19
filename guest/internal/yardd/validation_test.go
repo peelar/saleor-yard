@@ -1,4 +1,4 @@
-package sandboxd
+package yardd
 
 import "testing"
 
@@ -10,7 +10,7 @@ func validJob() Job {
 		Commit:         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		PlatformCommit: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		DashboardTag:   "3.23",
-		PrivateURL:     "https://sf-pr-123-abc123.exe.xyz",
+		PrivateURL:     "https://sy-pr-123-abc123.exe.xyz",
 	}
 }
 
@@ -40,7 +40,7 @@ func TestValidateJobRejectsUnsafeInput(t *testing.T) {
 		"moving ref expression":      func(job *Job) { job.SourceRef = "main@{1}" },
 		"shell metacharacter in ref": func(job *Job) { job.SourceRef = "main;shutdown" },
 		"image injection":            func(job *Job) { job.DashboardTag = "3.23;touch" },
-		"public HTTP URL":            func(job *Job) { job.PrivateURL = "http://sf-pr-123-abc123.exe.xyz" },
+		"public HTTP URL":            func(job *Job) { job.PrivateURL = "http://sy-pr-123-abc123.exe.xyz" },
 		"local URL without port":     func(job *Job) { job.PrivateURL = "http://localhost" },
 		"wrong private host":         func(job *Job) { job.PrivateURL = "https://attacker.example.com" },
 	}

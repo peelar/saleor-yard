@@ -1,4 +1,4 @@
-package sandboxd
+package yardd
 
 import (
 	"context"
@@ -148,17 +148,17 @@ func (p *Provisioner) run(job Job) {
 		fail(err)
 		return
 	}
-	if err := run("docker", "build", "--tag", "saleor-sandbox-core:"+job.Commit, p.config.SaleorDir()); err != nil {
+	if err := run("docker", "build", "--tag", "saleor-yard-core:"+job.Commit, p.config.SaleorDir()); err != nil {
 		fail(err)
 		return
 	}
 	pruneBuilderCache(ctx, p.config.CommandRunner, logFile)
 
-	if err := os.WriteFile(filepath.Join(p.config.PlatformDir(), "sandbox.nginx.conf"), []byte(nginxConfiguration(job)), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(p.config.PlatformDir(), "yard.nginx.conf"), []byte(nginxConfiguration(job)), 0o644); err != nil {
 		fail(err)
 		return
 	}
-	if err := os.WriteFile(filepath.Join(p.config.PlatformDir(), "sandbox.override.yml"), []byte(composeOverride(job)), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(p.config.PlatformDir(), "yard.override.yml"), []byte(composeOverride(job)), 0o644); err != nil {
 		fail(err)
 		return
 	}
@@ -239,7 +239,7 @@ func (p *Provisioner) composeArgs() []string {
 	return []string{
 		"compose",
 		"-f", filepath.Join(p.config.PlatformDir(), "docker-compose.yml"),
-		"-f", filepath.Join(p.config.PlatformDir(), "sandbox.override.yml"),
+		"-f", filepath.Join(p.config.PlatformDir(), "yard.override.yml"),
 	}
 }
 

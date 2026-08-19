@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { SandboxError } from "../../domain/errors.js";
+import { YardError } from "../../domain/errors.js";
 import type {
   CommandResult,
   CreatePlan,
@@ -55,21 +55,21 @@ export interface LocalProviderOptions {
   diskGb?: number;
   ports?: LocalProviderEnvironment["ports"];
   projectRoot?: string;
-  sandboxdBinary?: string;
+  yarddBinary?: string;
 }
 
 function parseJson(output: string): unknown {
   try {
     return JSON.parse(output.trim());
   } catch (error) {
-    throw new SandboxError("provider_response_invalid", "The local VM returned invalid JSON.", error);
+    throw new YardError("provider_response_invalid", "The local VM returned invalid JSON.", error);
   }
 }
 
 function requireLocalEnvironment(record: EnvironmentRecord): LocalProviderEnvironment {
   const environment = record.providerEnvironment;
   if (!environment || environment.provider !== "local") {
-    throw new SandboxError("environment_not_provisioned", `Environment ${record.id} does not have a local VM yet.`);
+    throw new YardError("environment_not_provisioned", `Environment ${record.id} does not have a local VM yet.`);
   }
   return environment;
 }
@@ -81,7 +81,7 @@ export class LocalProvider implements EnvironmentProvider {
   private readonly diskGb: number;
   private readonly configuredPorts: LocalProviderEnvironment["ports"] | undefined;
   private readonly projectRoot: string;
-  private readonly sandboxdBinary: string | undefined;
+  private readonly yarddBinary: string | undefined;
 
   constructor(private readonly runner: CommandRunner, options: LocalProviderOptions = {}) {
     this.cpu = options.cpu ?? defaultResourceProfile.cpu;
@@ -89,13 +89,13 @@ export class LocalProvider implements EnvironmentProvider {
     this.diskGb = options.diskGb ?? defaultResourceProfile.diskGb;
     this.configuredPorts = options.ports;
     this.projectRoot = options.projectRoot ?? resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-    this.sandboxdBinary = options.sandboxdBinary ?? process.env.SALEOR_SANDBOX_LOCAL_SANDBOXD;
+    this.yarddBinary = options.yarddBinary ?? process.env.SALEOR_YARD_LOCAL_YARDD;
   }
 
   async doctor(): Promise<DoctorReport> {
     const checks: DoctorCheck[] = [];
     checks.push(await this.commandCheck("Lima", "limactl", ["--version"]));
-    if (!this.sandboxdBinary) {
+    if (!this.yarddBinary) {
       checks.push(await this.commandCheck("Docker builder", "docker", ["version", "--format", "{{.Server.Version}}"]));
     }
     return { ok: checks.every((check) => check.ok), provider: "local", checks };
@@ -127,23 +127,23 @@ export class LocalProvider implements EnvironmentProvider {
     ], { timeoutMs: 600_000 });
     if (create.exitCode !== 0) {
       await this.runner.run("limactl", ["delete", "--force", name], { timeoutMs: 120_000 });
-      throw new SandboxError("provider_create_failed", create.stderr.trim() || "Lima could not create the VM.");
+      throw new YardError("provider_create_failed", create.stderr.trim() || "Lima could not create the VM.");
     }
 
     try {
       await this.mustRun("limactl", ["start", "--tty=false", name], "Lima could not start the VM.", 600_000);
-      const artifact = await this.prepareSandboxd();
+      const artifact = await this.prepareYardd();
       try {
-        await this.mustRun("limactl", ["copy", artifact.path, `${name}:/tmp/sandboxd`], "Could not copy sandboxd into the VM.", 120_000);
-        await this.mustRun("limactl", ["copy", join(this.projectRoot, "images", "sandboxd.service"), `${name}:/tmp/sandboxd.service`], "Could not copy the sandboxd service into the VM.", 120_000);
+        await this.mustRun("limactl", ["copy", artifact.path, `${name}:/tmp/yardd`], "Could not copy yardd into the VM.", 120_000);
+        await this.mustRun("limactl", ["copy", join(this.projectRoot, "images", "yardd.service"), `${name}:/tmp/yardd.service`], "Could not copy the yardd service into the VM.", 120_000);
       } finally {
         await artifact.cleanup();
       }
-      await this.guestMustRun(name, ["sudo", "install", "-m", "0755", "/tmp/sandboxd", "/usr/local/bin/sandboxd"], "Could not install sandboxd.");
-      await this.guestMustRun(name, ["sudo", "install", "-m", "0644", "/tmp/sandboxd.service", "/etc/systemd/system/sandboxd.service"], "Could not install the sandboxd service.");
+      await this.guestMustRun(name, ["sudo", "install", "-m", "0755", "/tmp/yardd", "/usr/local/bin/yardd"], "Could not install yardd.");
+      await this.guestMustRun(name, ["sudo", "install", "-m", "0644", "/tmp/yardd.service", "/etc/systemd/system/yardd.service"], "Could not install the yardd service.");
       await this.guestMustRun(name, ["sudo", "systemctl", "daemon-reload"], "Could not reload systemd.");
-      await this.guestMustRun(name, ["sudo", "systemctl", "enable", "--now", "sandboxd.service"], "Could not start sandboxd.");
-      await this.waitForSandboxd(name);
+      await this.guestMustRun(name, ["sudo", "systemctl", "enable", "--now", "yardd.service"], "Could not start yardd.");
+      await this.waitForYardd(name);
 
       const gatewayUrl = `http://127.0.0.1:${ports.gateway}`;
       const job = JSON.stringify({
@@ -155,7 +155,7 @@ export class LocalProvider implements EnvironmentProvider {
         dashboardTag: record.source.versionLine ?? defaultDashboardTag,
         privateUrl: gatewayUrl,
       });
-      await this.guestMustRun(name, ["sudo", "sandboxd", "provision", "--job", "-"], "sandboxd did not accept the provisioning job.", 30_000, job);
+      await this.guestMustRun(name, ["sudo", "yardd", "provision", "--job", "-"], "yardd did not accept the provisioning job.", 30_000, job);
 
       return {
         environment: { provider: "local", providerId: name, name, ports },
@@ -175,13 +175,13 @@ export class LocalProvider implements EnvironmentProvider {
 
   async inspect(record: EnvironmentRecord): Promise<ProviderStatus> {
     const environment = requireLocalEnvironment(record);
-    const result = await this.runGuest(environment.name, ["sudo", "sandboxd", "status"], 20_000);
+    const result = await this.runGuest(environment.name, ["sudo", "yardd", "status"], 20_000);
     if (result.exitCode !== 0) {
       return { state: "provisioning", phase: "allocating_environment", updatedAt: new Date().toISOString() };
     }
     const parsed = providerStatusSchema.parse(parseJson(result.stdout));
     if (parsed.commit && parsed.commit !== record.source.commit) {
-      throw new SandboxError("guest_commit_mismatch", `sandboxd reports ${parsed.commit}, but ${record.source.commit} was requested.`);
+      throw new YardError("guest_commit_mismatch", `yardd reports ${parsed.commit}, but ${record.source.commit} was requested.`);
     }
     return parsed.state === "requested"
       ? { state: "provisioning", phase: "allocating_environment", updatedAt: parsed.updatedAt }
@@ -191,10 +191,10 @@ export class LocalProvider implements EnvironmentProvider {
   async logs(record: EnvironmentRecord, options: LogOptions): Promise<CommandResult> {
     const environment = requireLocalEnvironment(record);
     if (options.service && !services.has(options.service)) {
-      throw new SandboxError("invalid_service", `Unknown Saleor service: ${options.service}.`);
+      throw new YardError("invalid_service", `Unknown Saleor service: ${options.service}.`);
     }
     return this.runner.run("limactl", [
-      "shell", "--workdir=/tmp", environment.name, "sudo", "sandboxd", "logs",
+      "shell", "--workdir=/tmp", environment.name, "sudo", "yardd", "logs",
       "--tail", String(options.tail),
       ...(options.follow ? ["--follow"] : []),
       ...(options.phase ? ["--phase", options.phase] : []),
@@ -203,17 +203,17 @@ export class LocalProvider implements EnvironmentProvider {
   }
 
   async exec(record: EnvironmentRecord, command: string[]): Promise<CommandResult> {
-    if (command.length === 0) throw new SandboxError("missing_command", "Provide a command after --.");
+    if (command.length === 0) throw new YardError("missing_command", "Provide a command after --.");
     const environment = requireLocalEnvironment(record);
-    const result = await this.runGuest(environment.name, ["sudo", "sandboxd", "exec", "--request", "-"], undefined, JSON.stringify({ service: "api", command }));
-    if (result.exitCode !== 0) throw new SandboxError("guest_exec_failed", result.stderr.trim() || "sandboxd could not run the command.");
+    const result = await this.runGuest(environment.name, ["sudo", "yardd", "exec", "--request", "-"], undefined, JSON.stringify({ service: "api", command }));
+    if (result.exitCode !== 0) throw new YardError("guest_exec_failed", result.stderr.trim() || "yardd could not run the command.");
     return commandResultSchema.parse(parseJson(result.stdout));
   }
 
   async http(record: EnvironmentRecord, request: EnvironmentHttpRequest): Promise<EnvironmentHttpResponse> {
     const environment = requireLocalEnvironment(record);
-    const result = await this.runGuest(environment.name, ["sudo", "sandboxd", "http", "--request", "-"], 60_000, JSON.stringify(request));
-    if (result.exitCode !== 0) throw new SandboxError("guest_http_failed", result.stderr.trim() || "sandboxd could not make the HTTP request.");
+    const result = await this.runGuest(environment.name, ["sudo", "yardd", "http", "--request", "-"], 60_000, JSON.stringify(request));
+    if (result.exitCode !== 0) throw new YardError("guest_http_failed", result.stderr.trim() || "yardd could not make the HTTP request.");
     return httpResponseSchema.parse(parseJson(result.stdout));
   }
 
@@ -226,13 +226,13 @@ export class LocalProvider implements EnvironmentProvider {
     const environment = requireLocalEnvironment(record);
     const result = await this.runner.run("limactl", ["delete", "--force", environment.name], { timeoutMs: 120_000 });
     if (result.exitCode !== 0 && !/does not exist|not found/i.test(result.stderr)) {
-      throw new SandboxError("provider_destroy_failed", result.stderr.trim() || `Lima could not delete ${environment.name}.`);
+      throw new YardError("provider_destroy_failed", result.stderr.trim() || `Lima could not delete ${environment.name}.`);
     }
   }
 
   private vmName(record: EnvironmentRecord): string {
     const source = record.source.kind === "pull_request" ? `pr-${record.source.pullRequest}` : record.source.kind;
-    return `sf-${source}-${record.id.slice(-6).replaceAll("_", "")}`.slice(0, 40);
+    return `sy-${source}-${record.id.slice(-6).replaceAll("_", "")}`.slice(0, 40);
   }
 
   private portsFor(record: EnvironmentRecord): LocalProviderEnvironment["ports"] {
@@ -250,7 +250,7 @@ export class LocalProvider implements EnvironmentProvider {
         return ports;
       }
     }
-    throw new SandboxError("local_ports_unavailable", "Could not find four free local ports for the VM.");
+    throw new YardError("local_ports_unavailable", "Could not find four free local ports for the VM.");
   }
 
   private portIsAvailable(port: number): Promise<boolean> {
@@ -261,18 +261,18 @@ export class LocalProvider implements EnvironmentProvider {
     });
   }
 
-  private async prepareSandboxd(): Promise<{ path: string; cleanup: () => Promise<void> }> {
-    if (this.sandboxdBinary) return { path: this.sandboxdBinary, cleanup: async () => {} };
-    const directory = await mkdtemp(join(tmpdir(), "saleor-sandbox-"));
+  private async prepareYardd(): Promise<{ path: string; cleanup: () => Promise<void> }> {
+    if (this.yarddBinary) return { path: this.yarddBinary, cleanup: async () => {} };
+    const directory = await mkdtemp(join(tmpdir(), "saleor-yard-"));
     const result = await this.runner.run("docker", [
       "build", "--file", join(this.projectRoot, "images", "local", "Dockerfile"),
       "--output", `type=local,dest=${directory}`, this.projectRoot,
     ], { timeoutMs: 600_000 });
     if (result.exitCode !== 0) {
       await rm(directory, { recursive: true, force: true });
-      throw new SandboxError("guest_build_failed", result.stderr.trim() || "Could not build sandboxd for the local VM.");
+      throw new YardError("guest_build_failed", result.stderr.trim() || "Could not build yardd for the local VM.");
     }
-    return { path: join(directory, "sandboxd"), cleanup: () => rm(directory, { recursive: true, force: true }) };
+    return { path: join(directory, "yardd"), cleanup: () => rm(directory, { recursive: true, force: true }) };
   }
 
   private runGuest(name: string, command: string[], timeoutMs?: number, input?: string): Promise<CommandResult> {
@@ -281,21 +281,21 @@ export class LocalProvider implements EnvironmentProvider {
 
   private async guestMustRun(name: string, command: string[], message: string, timeoutMs = 60_000, input?: string): Promise<void> {
     const result = await this.runGuest(name, command, timeoutMs, input);
-    if (result.exitCode !== 0) throw new SandboxError("guest_setup_failed", result.stderr.trim() || message);
+    if (result.exitCode !== 0) throw new YardError("guest_setup_failed", result.stderr.trim() || message);
   }
 
   private async mustRun(command: string, args: string[], message: string, timeoutMs: number): Promise<void> {
     const result = await this.runner.run(command, args, { timeoutMs });
-    if (result.exitCode !== 0) throw new SandboxError("provider_create_failed", result.stderr.trim() || message);
+    if (result.exitCode !== 0) throw new YardError("provider_create_failed", result.stderr.trim() || message);
   }
 
-  private async waitForSandboxd(name: string): Promise<void> {
+  private async waitForYardd(name: string): Promise<void> {
     for (let attempt = 0; attempt < 30; attempt += 1) {
-      const result = await this.runGuest(name, ["sudo", "sandboxd", "status"], 20_000);
+      const result = await this.runGuest(name, ["sudo", "yardd", "status"], 20_000);
       if (result.exitCode === 0) return;
       await new Promise((resolvePromise) => setTimeout(resolvePromise, 2_000));
     }
-    throw new SandboxError("guest_unavailable", "The local VM started, but sandboxd did not become available.");
+    throw new YardError("guest_unavailable", "The local VM started, but yardd did not become available.");
   }
 
   private async commandCheck(name: string, command: string, args: string[]): Promise<DoctorCheck> {

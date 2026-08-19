@@ -1,6 +1,6 @@
 # Architecture
 
-This document explains how Saleor Sandbox is built. Product behavior belongs in
+This document explains how Saleor Yard is built. Product behavior belongs in
 `SPEC.md`.
 
 ## One engine, two ways in
@@ -56,7 +56,7 @@ the guest runtime through the VM's private SSH connection. SSH is transport
 only; it does not contain the provisioning logic.
 
 The local adapter calls Lima's non-interactive CLI. It creates a Linux VM from
-Lima's rootful Docker template, copies in the same `sandboxd` binary, and forwards a
+Lima's rootful Docker template, copies in the same `yardd` binary, and forwards a
 small set of VM ports to free loopback ports. Lima uses macOS native
 virtualization by default. Local URLs work without a separate tunnel.
 
@@ -70,9 +70,9 @@ remote environments do not drift apart.
 
 ### Local state store
 
-The local CLI needs to remember the connection between a Sandbox environment ID
+The local CLI needs to remember the connection between a Yard environment ID
 and the provider resource ID. It stores small JSON records under
-`$SALEOR_SANDBOX_HOME`, or an operating-system-specific user data directory by
+`$SALEOR_YARD_HOME`, or an operating-system-specific user data directory by
 default.
 
 The store contains identifiers, source metadata, timestamps, and access
@@ -83,12 +83,12 @@ engine contract.
 
 ### Guest runtime
 
-Each current provider environment contains a small service named `sandboxd`. It
+Each current provider environment contains a small service named `yardd`. It
 has a local structured API and a matching command-line client. The provider can
 ask it to provision, report status, stream logs, execute commands, and make
 local HTTP requests.
 
-`sandboxd`:
+`yardd`:
 
 1. validates the job description received through the provider control channel;
 2. verifies required system tools;
@@ -112,15 +112,15 @@ and no large provisioning scripts.
 
 ### Provider image and local guest artifact
 
-The exe.dev VM starts from a versioned Sandbox image based on exeuntu. The image
-contains Docker, Compose, `sandboxd`, the systemd unit, and stable templates.
+The exe.dev VM starts from a versioned Yard image based on exeuntu. The image
+contains Docker, Compose, `yardd`, the systemd unit, and stable templates.
 Dynamic Saleor source code is never baked into this base image.
 
 Release automation publishes the image to GHCR. Production-like runs use a
 version tag or registry digest. Moving tags are not reproducible and are not the
 normal contract.
 
-For Lima, Sandbox builds the same static Go binary on the host with Docker,
+For Lima, Yard builds the same static Go binary on the host with Docker,
 copies it into the VM, and installs the shared systemd unit. A later release
 can ship signed binaries or a baked Lima image without changing the provider
 or guest contracts.
@@ -138,7 +138,7 @@ The guest accepts only those two URL forms.
 
 ## Logs and execution
 
-Sandbox uses `sandboxd` through a provider-owned transport:
+Yard uses `yardd` through a provider-owned transport:
 
 - provisioning logs come from the guest runtime event stream;
 - service logs are streamed by the guest runtime;
@@ -162,7 +162,7 @@ and idempotency; those fields are not pretended into the local model today.
 ### Expiry
 
 The engine owns expiry decisions through `pruneExpired`. The CLI exposes a
-single check as `sandbox prune`. The reusable expiry worker calls the same
+single check as `saleor-yard prune`. The reusable expiry worker calls the same
 engine operation continuously. A deployed control plane must supervise that
 worker. A timestamp by itself does not delete an environment.
 
@@ -175,7 +175,7 @@ Public GitHub sources are cloned without authentication.
 An exe.dev integration is also a credential boundary. It can give a VM access
 to GitHub, a cloud provider, an HTTP service, or another paid capability without
 placing a token on disk. Before allocation, the exe.dev adapter rejects
-integrations attached to every VM. Sandbox does not add a shared VM tag, so
+integrations attached to every VM. Yard does not add a shared VM tag, so
 tag-based integrations do not apply. It checks again after allocation and before
 provisioning so a direct VM attachment cannot reach untrusted source code. A
 dedicated provider account with no automatic integrations is the safest setup.

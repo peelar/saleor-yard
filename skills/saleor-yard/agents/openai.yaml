@@ -1,0 +1,4 @@
+interface:
+  display_name: "Saleor Yard"
+  short_description: "Run disposable Saleor environments safely"
+  default_prompt: "Use $saleor-yard to create and work with a disposable Saleor environment for this task."

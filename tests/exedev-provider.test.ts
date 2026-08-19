@@ -58,26 +58,26 @@ function record(): EnvironmentRecord {
 }
 
 describe("ExeDevProvider", () => {
-  it("creates a VM from the Sandbox image and sends a structured job to sandboxd", async () => {
+  it("creates a VM from the Yard image and sends a structured job to yardd", async () => {
     const runner = new FakeRunner([
       success("[]"),
-      success('{"vm_name":"sf-pr-123-abc123","ssh_dest":"sf-pr-123-abc123.exe.xyz","https_url":"https://sf-pr-123-abc123.exe.xyz"}'),
+      success('{"vm_name":"sy-pr-123-abc123","ssh_dest":"sy-pr-123-abc123.exe.xyz","https_url":"https://sy-pr-123-abc123.exe.xyz"}'),
       success("[]"),
       success(),
       success(),
       success('{"state":"requested","phase":"requested","updatedAt":"2026-08-18T12:00:00Z"}'),
       success('{"state":"provisioning","phase":"allocating_environment","updatedAt":"2026-08-18T12:00:01Z"}'),
     ]);
-    const provider = new ExeDevProvider(runner, { image: "ghcr.io/example/sandbox:v1" });
+    const provider = new ExeDevProvider(runner, { image: "ghcr.io/example/yard:v1" });
 
     const result = await provider.create(record());
 
     expect(result.environment).toMatchObject({
       provider: "exedev",
-      privateUrl: "https://sf-pr-123-abc123.exe.xyz",
+      privateUrl: "https://sy-pr-123-abc123.exe.xyz",
     });
-    expect(result.access.graphql).toBe("https://sf-pr-123-abc123.exe.xyz/graphql/");
-    expect(runner.calls[1]?.args).toContain("--image=ghcr.io/example/sandbox:v1");
+    expect(result.access.graphql).toBe("https://sy-pr-123-abc123.exe.xyz/graphql/");
+    expect(runner.calls[1]?.args).toContain("--image=ghcr.io/example/yard:v1");
     expect(runner.calls[1]?.args).toContain("--cpu=2");
     expect(runner.calls[1]?.args).toContain("--memory=4GB");
     expect(runner.calls[1]?.args).toContain("--disk=20GB");
@@ -110,7 +110,7 @@ describe("ExeDevProvider", () => {
     }));
   });
 
-  it("approves an account whose integrations cannot reach Sandbox VMs", async () => {
+  it("approves an account whose integrations cannot reach Yard VMs", async () => {
     const runner = new FakeRunner([
       success('{"email":"developer@example.com"}'),
       success('[{"name":"staging","type":"http-proxy","attachments":["tag:staging"]}]'),
@@ -122,7 +122,7 @@ describe("ExeDevProvider", () => {
     expect(report.checks).toContainEqual({
       name: "exe.dev integration isolation",
       ok: true,
-      message: "No automatic integrations can reach Sandbox VMs.",
+      message: "No automatic integrations can reach Yard VMs.",
     });
   });
 
@@ -142,8 +142,8 @@ describe("ExeDevProvider", () => {
   it("deletes a new VM if a direct integration appears before provisioning", async () => {
     const runner = new FakeRunner([
       success("[]"),
-      success('{"vm_name":"sf-pr-123-abc123","ssh_dest":"sf-pr-123-abc123.exe.xyz","https_url":"https://sf-pr-123-abc123.exe.xyz"}'),
-      success('[{"name":"github","type":"github","attachments":["vm:sf-pr-123-abc123"]}]'),
+      success('{"vm_name":"sy-pr-123-abc123","ssh_dest":"sy-pr-123-abc123.exe.xyz","https_url":"https://sy-pr-123-abc123.exe.xyz"}'),
+      success('[{"name":"github","type":"github","attachments":["vm:sy-pr-123-abc123"]}]'),
       success(),
     ]);
 
@@ -152,7 +152,7 @@ describe("ExeDevProvider", () => {
     });
 
     expect(runner.calls.at(-1)?.args).toEqual(expect.arrayContaining([
-      "exe.dev", "rm", "sf-pr-123-abc123", "--json",
+      "exe.dev", "rm", "sy-pr-123-abc123", "--json",
     ]));
   });
 
@@ -160,10 +160,10 @@ describe("ExeDevProvider", () => {
     const value = record();
     value.providerEnvironment = {
       provider: "exedev",
-      providerId: "sf-pr-123-abc123",
-      name: "sf-pr-123-abc123",
-      sshDestination: "sf-pr-123-abc123.exe.xyz",
-      privateUrl: "https://sf-pr-123-abc123.exe.xyz",
+      providerId: "sy-pr-123-abc123",
+      name: "sy-pr-123-abc123",
+      sshDestination: "sy-pr-123-abc123.exe.xyz",
+      privateUrl: "https://sy-pr-123-abc123.exe.xyz",
     };
     const runner = new FakeRunner([
       success('{"exitCode":0,"stdout":"safe","stderr":""}'),
@@ -184,10 +184,10 @@ describe("ExeDevProvider", () => {
     const value = record();
     value.providerEnvironment = {
       provider: "exedev",
-      providerId: "sf-pr-123-abc123",
-      name: "sf-pr-123-abc123",
-      sshDestination: "sf-pr-123-abc123.exe.xyz",
-      privateUrl: "https://sf-pr-123-abc123.exe.xyz",
+      providerId: "sy-pr-123-abc123",
+      name: "sy-pr-123-abc123",
+      sshDestination: "sy-pr-123-abc123.exe.xyz",
+      privateUrl: "https://sy-pr-123-abc123.exe.xyz",
     };
     const runner = new FakeRunner([
       success('{"state":"provisioning","phase":"building_core","updatedAt":"2026-08-18T12:01:00Z"}'),
@@ -204,10 +204,10 @@ describe("ExeDevProvider", () => {
     const value = record();
     value.providerEnvironment = {
       provider: "exedev",
-      providerId: "sf-pr-123-abc123",
-      name: "sf-pr-123-abc123",
-      sshDestination: "sf-pr-123-abc123.exe.xyz",
-      privateUrl: "https://sf-pr-123-abc123.exe.xyz",
+      providerId: "sy-pr-123-abc123",
+      name: "sy-pr-123-abc123",
+      sshDestination: "sy-pr-123-abc123.exe.xyz",
+      privateUrl: "https://sy-pr-123-abc123.exe.xyz",
     };
     const runner = new FakeRunner([
       success('{"state":"requested","phase":"requested","updatedAt":"2026-08-18T12:01:00Z"}'),
@@ -224,10 +224,10 @@ describe("ExeDevProvider", () => {
     const value = record();
     value.providerEnvironment = {
       provider: "exedev",
-      providerId: "sf-pr-123-abc123",
-      name: "sf-pr-123-abc123",
-      sshDestination: "sf-pr-123-abc123.exe.xyz",
-      privateUrl: "https://sf-pr-123-abc123.exe.xyz",
+      providerId: "sy-pr-123-abc123",
+      name: "sy-pr-123-abc123",
+      sshDestination: "sy-pr-123-abc123.exe.xyz",
+      privateUrl: "https://sy-pr-123-abc123.exe.xyz",
     };
     const runner = new FakeRunner([
       success(`{"state":"ready","phase":"ready","updatedAt":"2026-08-18T12:01:00Z","commit":"${"b".repeat(40)}"}`),
@@ -242,10 +242,10 @@ describe("ExeDevProvider", () => {
     const value = record();
     value.providerEnvironment = {
       provider: "exedev",
-      providerId: "sf-pr-123-abc123",
-      name: "sf-pr-123-abc123",
-      sshDestination: "sf-pr-123-abc123.exe.xyz",
-      privateUrl: "https://sf-pr-123-abc123.exe.xyz",
+      providerId: "sy-pr-123-abc123",
+      name: "sy-pr-123-abc123",
+      sshDestination: "sy-pr-123-abc123.exe.xyz",
+      privateUrl: "https://sy-pr-123-abc123.exe.xyz",
     };
     const runner = new FakeRunner([success("")]);
 

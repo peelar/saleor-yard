@@ -7,7 +7,7 @@ whole cloud service now.
 ## What remains the same
 
 The environment engine, source resolver, lifecycle, provider interface, and
-`sandboxd` guest runtime do not depend on Commander or a web framework. A
+`yardd` guest runtime do not depend on Commander or a web framework. A
 future HTTP handler can call the same engine methods as the CLI.
 
 Source selectors are resolved to full commits before a provider allocates an
@@ -41,7 +41,7 @@ cases inside the exe.dev adapter.
 - The CLI only parses input and prints output.
 - The engine works with plain TypeScript objects and repository interfaces.
 - Each provider owns its resource, transport, and access details.
-- The environment owns Saleor setup and runtime operations through `sandboxd`.
+- The environment owns Saleor setup and runtime operations through `yardd`.
 - Provider images and the Saleor Platform revision are versioned and pinned.
 
 ## Known first-version limits

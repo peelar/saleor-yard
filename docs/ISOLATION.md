@@ -1,13 +1,13 @@
 # Environment isolation
 
-Saleor Sandbox runs code from releases and pull requests. Pull request code is
+Saleor Yard runs code from releases and pull requests. Pull request code is
 untrusted, so every environment needs a strong isolation boundary.
 
 ## VMs and Dev Containers
 
 A Dev Container describes development tools, files, and setup commands. It can
 make an agent workspace easier to use, but it is not a security
-boundary. By itself, it does not provide Factory's private access, expiry,
+boundary. By itself, it does not provide Saleor Yard's private access, expiry,
 cleanup, or Saleor readiness contract.
 
 The current providers use one isolated VM per environment. Lima provides it
@@ -19,7 +19,7 @@ Do not run untrusted code on a shared Docker daemon. Do not mount a host Docker
 socket or developer credentials into an environment. Do not trust a pull
 request's own Dev Container configuration.
 
-A Sandbox-owned Dev Container configuration may be added later as a workspace
+A Yard-owned Dev Container configuration may be added later as a workspace
 feature inside the isolated environment. It does not replace the isolation
 boundary.
 
@@ -29,4 +29,4 @@ boundary.
 - Providers choose how each environment is isolated.
 - Untrusted work needs VM, microVM, or equivalent isolation.
 - Dev Containers are an optional workspace format, not a provider.
-- The coding agent stays outside and uses Sandbox commands or the future API.
+- The coding agent stays outside and uses Yard commands or the future API.

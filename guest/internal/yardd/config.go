@@ -1,4 +1,4 @@
-package sandboxd
+package yardd
 
 import (
 	"os"
@@ -14,11 +14,11 @@ type Config struct {
 }
 
 func DefaultConfig() Config {
-	stateDir := valueOrDefault(os.Getenv("SALEOR_SANDBOX_STATE_DIR"), "/var/lib/saleor-sandbox")
+	stateDir := valueOrDefault(os.Getenv("SALEOR_YARD_STATE_DIR"), "/var/lib/saleor-yard")
 	return Config{
-		RootDir:       valueOrDefault(os.Getenv("SALEOR_SANDBOX_ROOT"), "/opt/saleor-sandbox"),
+		RootDir:       valueOrDefault(os.Getenv("SALEOR_YARD_ROOT"), "/opt/saleor-yard"),
 		StateDir:      stateDir,
-		SocketPath:    valueOrDefault(os.Getenv("SALEOR_SANDBOX_SOCKET"), "/run/saleor-sandbox/sandboxd.sock"),
+		SocketPath:    valueOrDefault(os.Getenv("SALEOR_YARD_SOCKET"), "/run/saleor-yard/yardd.sock"),
 		GatewayPort:   8080,
 		CommandRunner: OSRunner{},
 	}

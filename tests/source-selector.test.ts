@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SandboxError } from "../src/domain/errors.js";
+import { YardError } from "../src/domain/errors.js";
 import { formatSourceSelector, parseSourceSelector } from "../src/source/source-selector.js";
 
 describe("source selectors", () => {
@@ -23,7 +23,7 @@ describe("source selectors", () => {
     "commit:not-a-sha",
     "release:latest",
   ])("rejects unsafe or ambiguous input %s", (input) => {
-    expect(() => parseSourceSelector(input)).toThrow(SandboxError);
+    expect(() => parseSourceSelector(input)).toThrow(YardError);
   });
 
   it("formats pull requests using the public shorthand", () => {

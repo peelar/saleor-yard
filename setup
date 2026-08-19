@@ -4,7 +4,7 @@ set -eu
 
 show_help() {
   printf '%s\n' \
-    'Set up Saleor Sandbox for its first run.' \
+    'Set up Saleor Yard for its first run.' \
     '' \
     'Usage:' \
     '  ./setup          Set up the local Lima provider' \
@@ -48,7 +48,7 @@ printf '%s\n' 'Installing project dependencies...'
 corepack pnpm install --frozen-lockfile
 
 printf '\nChecking the %s provider...\n' "$provider"
-if ! corepack pnpm sandbox --provider "$provider" doctor; then
+if ! corepack pnpm saleor-yard --provider "$provider" doctor; then
   printf '\nThe project is installed, but the %s provider still needs attention.\n' "$provider" >&2
   if [ "$provider" = "local" ]; then
     printf '%s\n' \
@@ -57,14 +57,14 @@ if ! corepack pnpm sandbox --provider "$provider" doctor; then
   else
     printf '%s\n' \
       'Resolve the failed exe.dev check above, then run ./setup exedev again.' \
-      'Remote sandboxes need an account with no automatic integrations.' >&2
+      'Remote environments need an account with no automatic integrations.' >&2
   fi
   exit 1
 fi
 
 printf '\nSetup is complete. Try a dry run:\n'
 if [ "$provider" = "local" ]; then
-  printf '%s\n' '  pnpm sandbox create pr:19668 --ttl 30m --dry-run --json'
+  printf '%s\n' '  pnpm saleor-yard create pr:19668 --ttl 30m --dry-run --json'
 else
-  printf '%s\n' '  pnpm sandbox --provider exedev create pr:19668 --ttl 30m --dry-run --json'
+  printf '%s\n' '  pnpm saleor-yard --provider exedev create pr:19668 --ttl 30m --dry-run --json'
 fi

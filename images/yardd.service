@@ -1,12 +1,12 @@
 [Unit]
-Description=Saleor Sandbox guest runtime
+Description=Saleor Yard guest runtime
 After=network-online.target docker.service
 Wants=network-online.target
 Requires=docker.service
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/sandboxd serve
+ExecStart=/usr/local/bin/yardd serve
 Restart=on-failure
 RestartSec=2
 

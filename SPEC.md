@@ -1,8 +1,8 @@
-# Saleor Sandbox Specification
+# Saleor Yard Specification
 
 ## 1. Purpose
 
-Saleor Sandbox creates a disposable Saleor development environment from a
+Saleor Yard creates a disposable Saleor development environment from a
 public `saleor/saleor` release, branch, commit, or pull request.
 
 The first user is a local coding agent such as Codex. The same environment
@@ -14,16 +14,16 @@ isolation method later.
 
 ## 2. Product Promise
 
-Give Saleor Sandbox one source. It returns a private, observable, controllable
+Give Saleor Yard one source. It returns a private, observable, controllable
 Saleor environment running the exact resolved commit.
 
 ```text
 Agent
   |
   |-- HTTP gateway --> Dashboard and GraphQL
-  |-- sandbox logs --> provisioning and service logs
-  |-- sandbox exec --> commands inside the environment
-  `-- sandbox destroy
+  |-- saleor-yard logs --> provisioning and service logs
+  |-- saleor-yard exec --> commands inside the environment
+  `-- saleor-yard destroy
                          |
                 Provider-owned environment
 ```
@@ -81,13 +81,13 @@ the Saleor Core source. The caller never supplies both a version and a branch.
 Examples:
 
 ```bash
-sandbox create release:3.23.26
-sandbox create branch:main
-sandbox create commit:eaaf809e91802745618e8b5390afccc80812d4f9
-sandbox create pr:19668
+saleor-yard create release:3.23.26
+saleor-yard create branch:main
+saleor-yard create commit:eaaf809e91802745618e8b5390afccc80812d4f9
+saleor-yard create pr:19668
 ```
 
-Before creating infrastructure, Sandbox resolves the selector through GitHub
+Before creating infrastructure, Yard resolves the selector through GitHub
 and records:
 
 - the requested selector;
@@ -104,7 +104,7 @@ environment from silently changing when a branch receives another commit.
 ### 5.1 Create and wait
 
 ```bash
-sandbox create pr:19668 --ttl 2h --json
+saleor-yard create pr:19668 --ttl 2h --json
 ```
 
 The HTTP API will eventually express the same operation:
@@ -128,14 +128,14 @@ Creation is asynchronous. The API returns an environment ID immediately. The
 CLI waits by default and shows progress to feel synchronous; `--no-wait` returns
 the provisioning record immediately. Interactive CLI progress
 shows a spinner, elapsed time, and a 0-100% lifecycle bar. The percentage moves
-only when Sandbox reaches a real lifecycle milestone; it is not a time estimate.
-When standard error is not interactive, Sandbox writes one line per milestone
+only when Yard reaches a real lifecycle milestone; it is not a time estimate.
+When standard error is not interactive, Yard writes one line per milestone
 instead of terminal animation. `--no-progress` disables both forms.
 
 ### 5.2 Inspect
 
 ```bash
-sandbox status env_abc123 --json
+saleor-yard status env_abc123 --json
 ```
 
 Ready output contains the stable environment contract:
@@ -166,12 +166,12 @@ The normal environment has one private HTTPS gateway:
 - required media and API paths also reach Core.
 
 A browser-capable local agent gets a loopback URL for a local Lima VM. For an
-exe.dev VM it can use `sandbox tunnel`, or open the private URL when its browser
+exe.dev VM it can use `saleor-yard tunnel`, or open the private URL when its browser
 has an exe.dev session. A command-line agent can make a request through the
 provider control channel without handling an HTTPS access token itself:
 
 ```bash
-sandbox http env_abc123 \
+saleor-yard http env_abc123 \
   POST /graphql/ \
   --data '{"query":"{ shop { name } }"}' \
   --json
@@ -182,10 +182,10 @@ sandbox http env_abc123 \
 Logs are part of the product, not an implementation escape hatch.
 
 ```bash
-sandbox logs env_abc123
-sandbox logs env_abc123 --service api
-sandbox logs env_abc123 --service worker --follow
-sandbox logs env_abc123 --setup
+saleor-yard logs env_abc123
+saleor-yard logs env_abc123 --service api
+saleor-yard logs env_abc123 --service worker --follow
+saleor-yard logs env_abc123 --setup
 ```
 
 Provisioning logs cover environment preparation, cloning, image building,
@@ -200,7 +200,7 @@ relevant logs remain available until the environment is destroyed or expires.
 Normal automation uses non-interactive commands:
 
 ```bash
-sandbox exec env_abc123 -- python manage.py check
+saleor-yard exec env_abc123 -- python manage.py check
 ```
 
 The result has an exit code, standard output, and standard error. An interactive
@@ -212,7 +212,7 @@ The private HTTPS gateway covers normal use. A local tunnel is an escape hatch
 for raw service ports:
 
 ```bash
-sandbox tunnel env_abc123
+saleor-yard tunnel env_abc123
 ```
 
 Expected local endpoints:
@@ -223,18 +223,18 @@ Expected local endpoints:
 - Mailpit: `http://localhost:18025/`
 - Jaeger: `http://localhost:16686/`
 
-Sandbox owns the SSH forwarding process and reports how to stop it. Local Lima
+Yard owns the SSH forwarding process and reports how to stop it. Local Lima
 environments forward separate loopback ports when they start, so this command
 only prints their existing URLs.
 
 ### 5.7 Destroy
 
 ```bash
-sandbox destroy env_abc123
+saleor-yard destroy env_abc123
 ```
 
-Explicit destroy should be idempotent. `sandbox prune` deletes expired
-environments known to the local CLI. `sandbox expiry-worker` runs the same
+Explicit destroy should be idempotent. `saleor-yard prune` deletes expired
+environments known to the local CLI. `saleor-yard expiry-worker` runs the same
 cleanup continuously. A deployed control plane must keep that worker running;
 recording a TTL alone does not delete an environment.
 
@@ -328,18 +328,18 @@ The CLI is designed for agents first:
 Initial command surface:
 
 ```text
-sandbox create <source>
-sandbox list
-sandbox status <environment>
-sandbox wait <environment>
-sandbox logs <environment>
-sandbox exec <environment> -- <command>
-sandbox http <environment> <method> <path>
-sandbox tunnel <environment>
-sandbox prune
-sandbox expiry-worker
-sandbox destroy <environment>
-sandbox doctor
+saleor-yard create <source>
+saleor-yard list
+saleor-yard status <environment>
+saleor-yard wait <environment>
+saleor-yard logs <environment>
+saleor-yard exec <environment> -- <command>
+saleor-yard http <environment> <method> <path>
+saleor-yard tunnel <environment>
+saleor-yard prune
+saleor-yard expiry-worker
+saleor-yard destroy <environment>
+saleor-yard doctor
 ```
 
 ## 10. Future Private API
@@ -381,7 +381,7 @@ The implementation has five main parts:
    provides access, and destroys the provider resource.
 4. **Transport** turns CLI or HTTP input into engine calls and formats results.
 
-5. **Guest runtime (`sandboxd`)** runs inside the environment. It owns Saleor
+5. **Guest runtime (`yardd`)** runs inside the environment. It owns Saleor
    setup, readiness, service logs, and command execution through a small
    structured API.
 
@@ -424,8 +424,8 @@ Good:
 ```text
 env_abc123 failed while migrating_database.
 The environment is still available until 18:00 UTC.
-Run: sandbox logs env_abc123 --setup
-Destroy it with: sandbox destroy env_abc123
+Run: saleor-yard logs env_abc123 --setup
+Destroy it with: saleor-yard destroy env_abc123
 ```
 
 ## 14. First Milestone

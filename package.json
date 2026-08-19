@@ -1,18 +1,18 @@
 {
-  "name": "saleor-sandbox",
+  "name": "saleor-yard",
   "version": "0.0.1",
   "private": true,
   "type": "module",
   "bin": {
-    "sandbox": "./dist/cli.js"
+    "saleor-yard": "./dist/cli.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "build:guest": "docker build --target sandboxd-build -f images/exedev/Dockerfile .",
-    "build:image": "docker build -f images/exedev/Dockerfile -t saleor-sandbox-exedev:dev .",
+    "build:guest": "docker build --target yardd-build -f images/exedev/Dockerfile .",
+    "build:image": "docker build -f images/exedev/Dockerfile -t saleor-yard-exedev:dev .",
     "build:local-guest": "docker build -f images/local/Dockerfile --output type=local,dest=dist/local-guest .",
     "check": "pnpm typecheck && pnpm test && pnpm build",
-    "sandbox": "tsx src/cli.ts",
+    "saleor-yard": "tsx src/cli.ts",
     "test": "pnpm test:control && pnpm test:guest",
     "test:control": "vitest run",
     "test:guest": "sh -c 'if command -v go >/dev/null 2>&1; then (cd guest && go test -race ./... && go vet ./...); else docker run --rm -v \"$PWD/guest:/src\" -w /src golang:1.26.6 sh -c \"/usr/local/go/bin/go test -race ./... && /usr/local/go/bin/go vet ./...\"; fi'",

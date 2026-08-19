@@ -2,7 +2,7 @@
 
 import { Command, CommanderError } from "commander";
 import { loadConfig } from "./config.js";
-import { toSandboxError, SandboxError } from "./domain/errors.js";
+import { toYardError, YardError } from "./domain/errors.js";
 import type {
   CommandResult,
   CreatePlan,
@@ -32,7 +32,7 @@ function createEngine(): EnvironmentEngine {
 
 function parseProvider(value: string): ProviderName {
   if (value !== "exedev" && value !== "local") {
-    throw new SandboxError("invalid_provider", `Unknown provider "${value}". Choose local or exedev.`);
+    throw new YardError("invalid_provider", `Unknown provider "${value}". Choose local or exedev.`);
   }
   return value;
 }
@@ -40,7 +40,7 @@ function parseProvider(value: string): ProviderName {
 function parseDuration(value: string): number {
   const match = /^(\d+)(m|h)$/.exec(value);
   if (!match) {
-    throw new SandboxError("invalid_duration", "Duration must look like 30m or 2h.");
+    throw new YardError("invalid_duration", "Duration must look like 30m or 2h.");
   }
   const amount = Number(match[1]);
   return match[2] === "h" ? amount * 60 : amount;
@@ -48,7 +48,7 @@ function parseDuration(value: string): number {
 
 function parsePositiveInteger(value: string, label: string): number {
   if (!/^[1-9][0-9]*$/.test(value)) {
-    throw new SandboxError("invalid_number", `${label} must be a positive integer.`);
+    throw new YardError("invalid_number", `${label} must be a positive integer.`);
   }
   return Number(value);
 }
@@ -56,7 +56,7 @@ function parsePositiveInteger(value: string, label: string): number {
 function parseHttpMethod(value: string): "GET" | "POST" | "PUT" | "PATCH" | "DELETE" {
   const method = value.toUpperCase();
   if (!new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]).has(method)) {
-    throw new SandboxError("invalid_http_method", "Method must be GET, POST, PUT, PATCH, or DELETE.");
+    throw new YardError("invalid_http_method", "Method must be GET, POST, PUT, PATCH, or DELETE.");
   }
   return method as "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 }
@@ -78,8 +78,8 @@ function printEnvironment(record: EnvironmentRecord): void {
   }
   if (record.failure) {
     process.stdout.write(`Failure: ${record.failure.message}\n`);
-    process.stdout.write(`Read setup logs: sandbox logs ${record.id} --setup\n`);
-    process.stdout.write(`Delete it: sandbox destroy ${record.id}\n`);
+    process.stdout.write(`Read setup logs: saleor-yard logs ${record.id} --setup\n`);
+    process.stdout.write(`Delete it: saleor-yard destroy ${record.id}\n`);
   }
 }
 
@@ -89,8 +89,8 @@ function printFailureGuidance(details: unknown): void {
   if (typeof value.environmentId !== "string") return;
   process.stderr.write(`Environment: ${value.environmentId}\n`);
   if (typeof value.expiresAt === "string") process.stderr.write(`Expires: ${value.expiresAt}\n`);
-  process.stderr.write(`Read setup logs: sandbox logs ${value.environmentId} --setup\n`);
-  process.stderr.write(`Delete it: sandbox destroy ${value.environmentId}\n`);
+  process.stderr.write(`Read setup logs: saleor-yard logs ${value.environmentId} --setup\n`);
+  process.stderr.write(`Delete it: saleor-yard destroy ${value.environmentId}\n`);
 }
 
 function printPlan(plan: CreatePlan): void {
@@ -133,7 +133,7 @@ const cliArguments = argumentSeparator === -1 ? process.argv : process.argv.slic
 const jsonRequested = cliArguments.includes("--json") && !cliArguments.includes("--help") && !cliArguments.includes("--version");
 
 program
-  .name("sandbox")
+  .name("saleor-yard")
   .description("Create disposable Saleor environments for coding agents.")
   .version("0.0.1")
   .option("--provider <name>", "environment provider: exedev or local", config.defaultProvider)
@@ -306,13 +306,13 @@ program
       options: { service?: string; setup?: boolean; phase?: string; tail: string; follow?: boolean; json?: boolean },
     ) => {
       if (options.service && (options.phase || options.setup)) {
-        throw new SandboxError("invalid_log_target", "Choose either --service or --setup, not both.");
+        throw new YardError("invalid_log_target", "Choose either --service or --setup, not both.");
       }
       if (options.phase && options.phase !== "provision") {
-        throw new SandboxError("invalid_log_target", "Use --setup for environment setup logs.");
+        throw new YardError("invalid_log_target", "Use --setup for environment setup logs.");
       }
       if (options.follow && options.json) {
-        throw new SandboxError("invalid_output", "Following logs cannot be returned as one JSON value.");
+        throw new YardError("invalid_output", "Following logs cannot be returned as one JSON value.");
       }
       const result = await engine.logs(id, {
         ...(options.service ? { service: options.service } : {}),
@@ -433,7 +433,7 @@ program
   .action(async (options: { interval: string; json?: boolean }) => {
     const intervalMinutes = parseDuration(options.interval);
     if (intervalMinutes < 1) {
-      throw new SandboxError("invalid_duration", "Expiry checks must be at least one minute apart.");
+      throw new YardError("invalid_duration", "Expiry checks must be at least one minute apart.");
     }
 
     const controller = new AbortController();
@@ -458,7 +458,7 @@ program
           }
         },
         onError: (error) => {
-          const failure = toSandboxError(error);
+          const failure = toYardError(error);
           process.stderr.write(`Expiry check failed: ${failure.message}\n`);
         },
       });
@@ -497,7 +497,7 @@ try {
       process.exitCode = error.exitCode;
     }
   } else {
-    const failure = toSandboxError(error);
+    const failure = toYardError(error);
     if (jsonRequested) {
       writeJson({ error: { code: failure.code, message: failure.message, details: failure.details } });
     } else {

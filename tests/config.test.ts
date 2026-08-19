@@ -7,10 +7,10 @@ describe("loadConfig", () => {
   });
 
   it("allows exe.dev to be selected", () => {
-    expect(loadConfig({ SALEOR_SANDBOX_PROVIDER: "exedev" }).defaultProvider).toBe("exedev");
+    expect(loadConfig({ SALEOR_YARD_PROVIDER: "exedev" }).defaultProvider).toBe("exedev");
   });
 
   it("preserves an invalid provider so the CLI can report it", () => {
-    expect(loadConfig({ SALEOR_SANDBOX_PROVIDER: "typo" }).defaultProvider).toBe("typo");
+    expect(loadConfig({ SALEOR_YARD_PROVIDER: "typo" }).defaultProvider).toBe("typo");
   });
 });

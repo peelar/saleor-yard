@@ -25,7 +25,7 @@ jobs:
       - id: metadata
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/saleor-sandbox-exedev
+          images: ghcr.io/${{ github.repository_owner }}/saleor-yard-exedev
           tags: |
             type=semver,pattern={{version}}
             type=sha
@@ -37,6 +37,6 @@ jobs:
           push: true
           tags: ${{ steps.metadata.outputs.tags }}
           labels: ${{ steps.metadata.outputs.labels }}
-          build-args: SANDBOXD_VERSION=${{ github.sha }}
+          build-args: YARDD_VERSION=${{ github.sha }}
           provenance: true
           sbom: true

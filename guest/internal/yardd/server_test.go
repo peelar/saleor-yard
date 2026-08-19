@@ -1,4 +1,4 @@
-package sandboxd
+package yardd
 
 import (
 	"bytes"
@@ -56,9 +56,9 @@ func testConfig(t *testing.T, runner Runner) Config {
 	t.Helper()
 	root := t.TempDir()
 	return Config{
-		RootDir:       filepath.Join(root, "sandbox"),
+		RootDir:       filepath.Join(root, "yard"),
 		StateDir:      filepath.Join(root, "state"),
-		SocketPath:    filepath.Join(root, "run", "sandboxd.sock"),
+		SocketPath:    filepath.Join(root, "run", "yardd.sock"),
 		GatewayPort:   8080,
 		CommandRunner: runner,
 	}

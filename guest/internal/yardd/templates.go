@@ -1,4 +1,4 @@
-package sandboxd
+package yardd
 
 import (
 	"fmt"
@@ -34,7 +34,7 @@ func nginxConfiguration(job Job) string {
 func composeOverride(job Job) string {
 	return fmt.Sprintf(`services:
   api:
-    image: saleor-sandbox-core:%s
+    image: saleor-yard-core:%s
     environment:
       ALLOWED_HOSTS: "*"
       ALLOWED_CLIENT_HOSTS: "*"
@@ -42,7 +42,7 @@ func composeOverride(job Job) string {
       PUBLIC_URL: "%s"
       HTTP_IP_FILTER_ENABLED: "False"
   worker:
-    image: saleor-sandbox-core:%s
+    image: saleor-yard-core:%s
     command:
       - celery
       - -A
@@ -66,7 +66,7 @@ func composeOverride(job Job) string {
     ports:
       - "8080:80"
     volumes:
-      - ./sandbox.nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./yard.nginx.conf:/etc/nginx/conf.d/default.conf:ro
     networks:
       - default
       - saleor-backend-tier

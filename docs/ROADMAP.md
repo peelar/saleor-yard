@@ -15,7 +15,7 @@ Work order:
 
 1. [x] Define the product contract in `SPEC.md`.
 2. [x] Add the environment model, source resolver, state store, and CLI shell.
-3. [x] Add the `sandboxd` guest runtime and versioned VM image.
+3. [x] Add the `yardd` guest runtime and versioned VM image.
 4. [x] Add an exe.dev provider with a safe dry-run path.
 5. [x] Provision the Saleor development stack and report phases.
 6. [x] Add status, wait, logs, exec, HTTP access, tunnel, prune, and destroy.

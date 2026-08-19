@@ -9,7 +9,7 @@ async function runCli(args: string[], env: NodeJS.ProcessEnv = {}) {
     const result = await execFileAsync(
       "pnpm",
       ["exec", "tsx", "src/cli.ts", ...args],
-      { env: { ...process.env, SALEOR_SANDBOX_HOME: "/tmp/saleor-sandbox-cli-test", ...env } },
+      { env: { ...process.env, SALEOR_YARD_HOME: "/tmp/saleor-yard-cli-test", ...env } },
     );
     return { ...result, exitCode: 0 };
   } catch (error) {
@@ -19,8 +19,16 @@ async function runCli(args: string[], env: NodeJS.ProcessEnv = {}) {
 }
 
 describe("CLI output contract", () => {
+  it("uses the saleor-yard executable name", async () => {
+    const result = await runCli(["--help"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("Usage: saleor-yard [options] [command]");
+    expect(result.stderr).toBe("");
+  });
+
   it("reports an invalid provider instead of switching providers", async () => {
-    const result = await runCli(["doctor", "--json"], { SALEOR_SANDBOX_PROVIDER: "typo" });
+    const result = await runCli(["doctor", "--json"], { SALEOR_YARD_PROVIDER: "typo" });
 
     expect(result.exitCode).toBe(1);
     expect(JSON.parse(result.stdout)).toMatchObject({

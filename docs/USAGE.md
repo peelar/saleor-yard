@@ -1,6 +1,6 @@
 # Usage
 
-Saleor Sandbox is meant to feel like a small remote development machine that an
+Saleor Yard is meant to feel like a small remote development machine that an
 agent can control without learning Lima, exe.dev, or Docker Compose.
 
 ## Before the first run
@@ -26,13 +26,13 @@ The local provider needs Lima 2.x and Docker. On macOS, install Lima with
 
 The exe.dev provider checks the SSH connection and the account's integration
 rules. Saleor runs in a remote VM. Use a dedicated exe.dev account with no
-automatic integrations: Sandbox refuses to run untrusted code when an
+automatic integrations: Yard refuses to run untrusted code when an
 integration is attached through `auto:all` or the new VM name. It does not add a
 shared VM tag. Changing an automatic rule can affect other VMs on the same
 account.
 
 The current VM image has only been built locally. A live creation also needs a
-published image configured through `SALEOR_SANDBOX_EXEDEV_IMAGE`.
+published image configured through `SALEOR_YARD_EXEDEV_IMAGE`.
 
 ## Create an environment
 
@@ -40,7 +40,7 @@ Start with a dry run. It resolves the source to an exact commit and shows what
 would be created, but it does not allocate an environment.
 
 ```bash
-pnpm sandbox create pr:19668 --ttl 30m --dry-run --json
+pnpm saleor-yard create pr:19668 --ttl 30m --dry-run --json
 ```
 
 Both providers currently use a small default environment: 2 CPUs, 4 GB of
@@ -50,10 +50,10 @@ issue reproduction, not production traffic or load testing.
 For a real environment:
 
 ```bash
-pnpm sandbox create pr:19668 --ttl 2h --json
+pnpm saleor-yard create pr:19668 --ttl 2h --json
 ```
 
-While it works, Sandbox shows one live progress line with a spinner, lifecycle
+While it works, Yard shows one live progress line with a spinner, lifecycle
 percentage, current step, and elapsed time. Long steps such as building Core may
 hold at one percentage for several minutes. The spinner and timer show that the
 CLI is still waiting; the percentage advances only after a real setup milestone
@@ -66,7 +66,7 @@ You can replace `pr:19668` with `release:3.23.26`, `branch:main`, or a full
 `commit:` SHA.
 
 Keep the returned environment ID. Every later command uses it.
-Sandbox remembers which provider owns that ID, so later commands do not need a
+Yard remembers which provider owns that ID, so later commands do not need a
 provider option.
 
 ## Work with the environment
@@ -74,51 +74,51 @@ provider option.
 Check progress:
 
 ```bash
-pnpm sandbox status env_abc123 --json
-pnpm sandbox wait env_abc123 --timeout 30 --json
+pnpm saleor-yard status env_abc123 --json
+pnpm saleor-yard wait env_abc123 --timeout 30 --json
 ```
 
 Read setup and service logs:
 
 ```bash
-pnpm sandbox logs env_abc123 --setup
-pnpm sandbox logs env_abc123 --service api --tail 200
-pnpm sandbox logs env_abc123 --service worker --follow
+pnpm saleor-yard logs env_abc123 --setup
+pnpm saleor-yard logs env_abc123 --service api --tail 200
+pnpm saleor-yard logs env_abc123 --service worker --follow
 ```
 
 Run a command in the Saleor API container:
 
 ```bash
-pnpm sandbox exec env_abc123 -- python manage.py check
+pnpm saleor-yard exec env_abc123 -- python manage.py check
 ```
 
 Make a GraphQL request without opening a browser or handling an HTTPS access
 token:
 
 ```bash
-pnpm sandbox http env_abc123 POST /graphql/ \
+pnpm saleor-yard http env_abc123 POST /graphql/ \
   --data '{"query":"{ shop { name } }"}' --json
 ```
 
 ## Browse it
 
-For a local environment, the returned loopback URLs work immediately. Sandbox
+For a local environment, the returned loopback URLs work immediately. Yard
 chooses a free group of ports for each environment, so more than one can run at
 once.
 Use `status` to print the exact URLs.
 
 ```bash
-pnpm sandbox status env_abc123
+pnpm saleor-yard status env_abc123
 ```
 
-Running `sandbox tunnel env_abc123` for a local environment only prints the same
-URLs; there is no extra tunnel process to keep alive.
+Running `saleor-yard tunnel env_abc123` for a local environment only prints the
+same URLs; there is no extra tunnel process to keep alive.
 
 For exe.dev, the returned URL is private and may require an exe.dev browser
 session. The predictable local path is an SSH tunnel:
 
 ```bash
-pnpm sandbox tunnel env_abc123
+pnpm saleor-yard tunnel env_abc123
 ```
 
 Use `--json` when a script needs the access URLs as one machine-readable value.
@@ -138,19 +138,19 @@ exe.dev tunnel can run at a time in the first version.
 Delete one environment:
 
 ```bash
-pnpm sandbox destroy env_abc123 --json
+pnpm saleor-yard destroy env_abc123 --json
 ```
 
 Delete every saved environment whose lifetime has passed:
 
 ```bash
-pnpm sandbox prune --json
+pnpm saleor-yard prune --json
 ```
 
 Run cleanup continuously:
 
 ```bash
-pnpm sandbox expiry-worker --interval 1m
+pnpm saleor-yard expiry-worker --interval 1m
 ```
 
 Keep this command under a process manager for remote exe.dev environments. With

@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { SandboxError } from "../domain/errors.js";
+import { YardError } from "../domain/errors.js";
 import type {
   CommandResult,
   CreatePlan,
@@ -43,7 +43,7 @@ export class EnvironmentEngine {
     onUpdate?: (record: EnvironmentRecord) => void,
   ): Promise<EnvironmentRecord | CreatePlan> {
     if (!Number.isInteger(options.ttlMinutes) || options.ttlMinutes < 15 || options.ttlMinutes > 24 * 60) {
-      throw new SandboxError("invalid_ttl", "Lifetime must be between 15 minutes and 24 hours.");
+      throw new YardError("invalid_ttl", "Lifetime must be between 15 minutes and 24 hours.");
     }
 
     const source = await this.resolver.resolve(parseSourceSelector(sourceInput));
@@ -78,9 +78,9 @@ export class EnvironmentEngine {
       await this.store.save(record);
       return record;
     } catch (error) {
-      const failure = error instanceof SandboxError
+      const failure = error instanceof YardError
         ? error
-        : new SandboxError("environment_create_failed", error instanceof Error ? error.message : "Environment allocation failed.");
+        : new YardError("environment_create_failed", error instanceof Error ? error.message : "Environment allocation failed.");
       record.state = "failed";
       record.phase = "failed";
       record.failure = {
@@ -90,7 +90,7 @@ export class EnvironmentEngine {
       record.updatedAt = new Date().toISOString();
       await this.store.save(record);
       onUpdate?.(record);
-      throw new SandboxError(failure.code, failure.message, {
+      throw new YardError(failure.code, failure.message, {
         ...(failure.details && typeof failure.details === "object" ? failure.details : {}),
         environmentId: record.id,
         expiresAt: record.expiresAt,
@@ -146,7 +146,7 @@ export class EnvironmentEngine {
       }
       await new Promise((resolve) => setTimeout(resolve, intervalMs));
     }
-    throw new SandboxError("wait_timeout", `Environment ${id} did not become ready in time.`, {
+    throw new YardError("wait_timeout", `Environment ${id} did not become ready in time.`, {
       environmentId: id,
     });
   }
@@ -224,7 +224,7 @@ export class EnvironmentEngine {
   private providerFor(name: ProviderName): EnvironmentProvider {
     const provider = this.providers.get(name);
     if (!provider) {
-      throw new SandboxError("provider_unavailable", `Provider ${name} is not configured.`);
+      throw new YardError("provider_unavailable", `Provider ${name} is not configured.`);
     }
     return provider;
   }

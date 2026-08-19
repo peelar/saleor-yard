@@ -1,4 +1,4 @@
-package sandboxd
+package yardd
 
 import (
 	"bytes"

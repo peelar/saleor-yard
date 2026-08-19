@@ -81,7 +81,7 @@ class FakeProvider implements EnvironmentProvider {
     return {
       environmentId: record.id,
       provider: "exedev",
-      resourceName: "sf-test",
+      resourceName: "sy-test",
       source: record.source,
       resources: { cpu: 4, memoryGb: 8, diskGb: 40 },
       privateGatewayPort: 8080,
@@ -95,15 +95,15 @@ class FakeProvider implements EnvironmentProvider {
     return {
       environment: {
         provider: "exedev",
-        providerId: "sf-test",
-        name: "sf-test",
-        sshDestination: "sf-test.exe.xyz",
-        privateUrl: "https://sf-test.exe.xyz",
+        providerId: "sy-test",
+        name: "sy-test",
+        sshDestination: "sy-test.exe.xyz",
+        privateUrl: "https://sy-test.exe.xyz",
       },
       access: {
-        dashboard: "https://sf-test.exe.xyz/",
-        graphql: "https://sf-test.exe.xyz/graphql/",
-        sshDestination: "sf-test.exe.xyz",
+        dashboard: "https://sy-test.exe.xyz/",
+        graphql: "https://sy-test.exe.xyz/graphql/",
+        sshDestination: "sy-test.exe.xyz",
       },
     };
   }
@@ -165,7 +165,7 @@ describe("EnvironmentEngine", () => {
     const result = await engine.create("pr:123", { ttlMinutes: 30, dryRun: false, provider: "exedev" });
 
     expect(provider.createCalls).toBe(1);
-    expect("access" in result && result.access?.graphql).toBe("https://sf-test.exe.xyz/graphql/");
+    expect("access" in result && result.access?.graphql).toBe("https://sy-test.exe.xyz/graphql/");
     expect(repository.records.size).toBe(1);
   });
 

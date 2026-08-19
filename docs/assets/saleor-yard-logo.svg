@@ -1,0 +1,116 @@
+<!-- Hallmark · pre-emit critique: P5 H4 E4 S5 R5 V4 -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title description">
+  <title id="title">Saleor Yard</title>
+  <desc id="description">An isometric shipyard gantry lowering a terminal module onto an orange work platform.</desc>
+  <style>
+    :root {
+      --color-structure-highlight: #343a48;
+      --color-structure: #252b37;
+      --color-structure-mid: #222733;
+      --color-structure-low: #191e28;
+      --color-structure-deep: #171b24;
+      --color-structure-edge: #10131a;
+      --color-structure-void: #0d1016;
+      --color-berth: #10141c;
+      --color-accent-high: #ff9a58;
+      --color-accent-light: #ff8a4c;
+      --color-accent: #ff6846;
+      --color-accent-low: #ef482f;
+      --color-accent-side: #d9432e;
+      --color-accent-deep: #97271f;
+      --color-accent-edge: #b43128;
+      --color-module-highlight: #555d6d;
+      --color-module-top: #4a5262;
+      --color-module-mid: #3c4352;
+      --color-module-side: #262c38;
+      --color-module-face: #181c25;
+      --color-module-edge: #1b2029;
+      --color-cable: #dadee6;
+      --color-cable-low: #737b8b;
+      --color-terminal: #fff8ea;
+      --color-shadow: #080a0f;
+    }
+  </style>
+  <defs>
+    <linearGradient id="deck" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="var(--color-structure-highlight)"/>
+      <stop offset="1" stop-color="var(--color-structure-deep)"/>
+    </linearGradient>
+    <linearGradient id="left-side" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="var(--color-structure-mid)"/>
+      <stop offset="1" stop-color="var(--color-structure-edge)"/>
+    </linearGradient>
+    <linearGradient id="right-side" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="var(--color-structure-low)"/>
+      <stop offset="1" stop-color="var(--color-structure-void)"/>
+    </linearGradient>
+    <linearGradient id="orange" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="var(--color-accent-light)"/>
+      <stop offset="0.52" stop-color="var(--color-accent)"/>
+      <stop offset="1" stop-color="var(--color-accent-low)"/>
+    </linearGradient>
+    <linearGradient id="orange-side" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="var(--color-accent-side)"/>
+      <stop offset="1" stop-color="var(--color-accent-deep)"/>
+    </linearGradient>
+    <linearGradient id="module" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="var(--color-module-mid)"/>
+      <stop offset="1" stop-color="var(--color-module-face)"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="180%">
+      <feDropShadow dx="0" dy="28" stdDeviation="28" flood-color="var(--color-shadow)" flood-opacity="0.42"/>
+    </filter>
+    <filter id="soft-shadow" x="-30%" y="-30%" width="160%" height="180%">
+      <feDropShadow dx="0" dy="12" stdDeviation="12" flood-color="var(--color-shadow)" flood-opacity="0.38"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#shadow)">
+    <!-- Isometric yard foundation -->
+    <path d="M126 565 511 344l387 223-386 224z" fill="url(#deck)"/>
+    <path d="m126 565 386 226v126L126 692z" fill="url(#left-side)"/>
+    <path d="m512 791 386-224v126L512 917z" fill="url(#right-side)"/>
+
+    <!-- Recessed work berth -->
+    <path d="m237 564 275-158 276 159-276 160z" fill="var(--color-berth)"/>
+    <path d="m286 565 226-130 227 131-227 132z" fill="url(#orange)"/>
+    <path d="m286 565 226 133v39L286 604z" fill="url(#orange-side)"/>
+    <path d="m512 698 227-132v39L512 737z" fill="var(--color-accent-edge)"/>
+    <path d="m360 564 152-88 153 89-153 89z" fill="var(--color-accent-high)" opacity="0.34"/>
+
+    <!-- Gantry feet and uprights -->
+    <path d="m192 514 50-29 35 20-50 29z" fill="var(--color-module-top)"/>
+    <path d="m192 514 35 20v198l-35-20z" fill="var(--color-structure-deep)"/>
+    <path d="m227 534 50-29v198l-50 29z" fill="var(--color-module-side)"/>
+    <path d="m748 494 50-29 35 20-50 29z" fill="var(--color-module-top)"/>
+    <path d="m748 494 35 20v198l-35-20z" fill="var(--color-structure-deep)"/>
+    <path d="m783 514 50-29v198l-50 29z" fill="var(--color-structure)"/>
+
+    <!-- Crane beam -->
+    <path d="m192 270 486-151 155 89-487 153z" fill="url(#deck)"/>
+    <path d="m192 270 154 91v65l-154-90z" fill="var(--color-structure-deep)"/>
+    <path d="m346 361 487-153v65L346 426z" fill="var(--color-structure)"/>
+    <path d="m222 278 448-139 122 70-448 141z" fill="url(#orange)"/>
+    <path d="m344 350 448-141v22L344 373z" fill="var(--color-accent-edge)"/>
+
+    <!-- Hoist -->
+    <path d="m522 260 68-21 47 27-68 22z" fill="var(--color-module-top)"/>
+    <path d="m522 260 47 28v45l-47-28z" fill="var(--color-module-edge)"/>
+    <path d="m569 288 68-22v45l-68 22z" fill="var(--color-structure-highlight)"/>
+    <path d="M579 320v147" fill="none" stroke="var(--color-cable)" stroke-width="10" stroke-linecap="round"/>
+    <path d="M612 306v142" fill="none" stroke="var(--color-cable-low)" stroke-width="7" stroke-linecap="round"/>
+  </g>
+
+  <!-- Suspended terminal module -->
+  <g filter="url(#soft-shadow)">
+    <path d="m440 450 139-43 123 71-140 44z" fill="var(--color-module-highlight)"/>
+    <path d="m440 450 122 72v164l-122-71z" fill="var(--color-module-edge)"/>
+    <path d="m562 522 140-44v164l-140 44z" fill="url(#module)"/>
+    <path d="m590 554 36 21-36 42" fill="none" stroke="var(--color-terminal)" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="m635 624 35 20" fill="none" stroke="var(--color-terminal)" stroke-width="20" stroke-linecap="round"/>
+    <path d="m440 450 122 72" fill="none" stroke="var(--color-cable-low)" stroke-width="4"/>
+  </g>
+
+  <!-- Small yard markings -->
+  <path d="m180 640 53 31v18l-53-31zm72 42 53 31v18l-53-31zm467 38 58-34v18l-58 34zm78-46 45-26v18l-45 26z" fill="var(--color-accent)" opacity="0.72"/>
+</svg>

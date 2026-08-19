@@ -1,4 +1,4 @@
-package sandboxd
+package yardd
 
 import (
 	"strings"
@@ -11,7 +11,7 @@ func TestComposeOverrideUsesTheExactCoreAndDashboardVersions(t *testing.T) {
 	result := composeOverride(job)
 
 	for _, expected := range []string{
-		"image: saleor-sandbox-core:" + job.Commit,
+		"image: saleor-yard-core:" + job.Commit,
 		"image: ghcr.io/saleor/saleor-dashboard:" + job.DashboardTag,
 		`DASHBOARD_URL: "` + job.PrivateURL + `/"`,
 		`PUBLIC_URL: "` + job.PrivateURL + `"`,
