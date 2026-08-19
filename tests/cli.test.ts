@@ -27,14 +27,14 @@ describe("CLI output contract", () => {
     expect(result.stderr).toBe("");
   });
 
-  it("rejects the hosted provider on the local-only branch", async () => {
-    const result = await runCli(["doctor", "--json"], { SALEOR_YARD_PROVIDER: "exedev" });
+  it("reports an invalid provider instead of switching providers", async () => {
+    const result = await runCli(["doctor", "--json"], { SALEOR_YARD_PROVIDER: "typo" });
 
     expect(result.exitCode).toBe(1);
     expect(JSON.parse(result.stdout)).toMatchObject({
       error: {
         code: "invalid_provider",
-        message: 'Unknown provider "exedev". Choose local.',
+        message: 'Unknown provider "typo". Choose local or exedev.',
       },
     });
     expect(result.stderr).toBe("");

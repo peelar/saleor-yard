@@ -10,9 +10,10 @@ make an agent workspace easier to use, but it is not a security
 boundary. By itself, it does not provide Saleor Yard's private access, expiry,
 cleanup, or Saleor readiness contract.
 
-The current Lima provider uses one isolated local VM per environment. A future
-provider may use a hosted VM, microVM, or a hardened container runtime such as
-gVisor or Kata, as long as it keeps the same security and environment contract.
+The current providers use one isolated VM per environment. Lima provides it
+locally and exe.dev provides it remotely. A future provider may use a microVM or
+a hardened container runtime such as gVisor or Kata, as long as it keeps the
+same security and environment contract.
 
 Do not run untrusted code on a shared Docker daemon. Do not mount a host Docker
 socket or developer credentials into an environment. Do not trust a pull

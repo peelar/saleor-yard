@@ -2,7 +2,7 @@ export const sourceKinds = ["release", "branch", "commit", "pull_request"] as co
 
 export type SourceKind = (typeof sourceKinds)[number];
 
-export const providerNames = ["local"] as const;
+export const providerNames = ["exedev", "local"] as const;
 
 export type ProviderName = (typeof providerNames)[number];
 
@@ -60,6 +60,12 @@ interface BaseProviderEnvironment {
   name: string;
 }
 
+export interface ExeDevProviderEnvironment extends BaseProviderEnvironment {
+  provider: "exedev";
+  sshDestination: string;
+  privateUrl: string;
+}
+
 export interface LocalProviderEnvironment extends BaseProviderEnvironment {
   provider: "local";
   ports: {
@@ -70,7 +76,7 @@ export interface LocalProviderEnvironment extends BaseProviderEnvironment {
   };
 }
 
-export type ProviderEnvironment = LocalProviderEnvironment;
+export type ProviderEnvironment = ExeDevProviderEnvironment | LocalProviderEnvironment;
 
 export interface EnvironmentAccess {
   dashboard: string;

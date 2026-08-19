@@ -15,6 +15,7 @@ import { EnvironmentEngine } from "./engine/environment-engine.js";
 import { runExpiryWorker } from "./engine/expiry-worker.js";
 import { CliProgress } from "./cli/progress.js";
 import { SpawnCommandRunner } from "./process/command-runner.js";
+import { ExeDevProvider } from "./providers/exedev/exedev-provider.js";
 import { LocalProvider } from "./providers/local/local-provider.js";
 import { GitHubSourceResolver } from "./source/github-source-resolver.js";
 import { EnvironmentStore } from "./state/environment-store.js";
@@ -24,14 +25,14 @@ function createEngine(): EnvironmentEngine {
   const runner = new SpawnCommandRunner();
   return new EnvironmentEngine(
     new GitHubSourceResolver(),
-    [new LocalProvider(runner)],
+    [new ExeDevProvider(runner), new LocalProvider(runner)],
     new EnvironmentStore(config.stateDirectory),
   );
 }
 
 function parseProvider(value: string): ProviderName {
-  if (value !== "local") {
-    throw new YardError("invalid_provider", `Unknown provider "${value}". Choose local.`);
+  if (value !== "exedev" && value !== "local") {
+    throw new YardError("invalid_provider", `Unknown provider "${value}". Choose local or exedev.`);
   }
   return value;
 }
@@ -135,7 +136,7 @@ program
   .name("saleor-yard")
   .description("Create disposable Saleor environments for coding agents.")
   .version("0.0.1")
-  .option("--provider <name>", "environment provider: local", config.defaultProvider)
+  .option("--provider <name>", "environment provider: exedev or local", config.defaultProvider)
   .option("--no-progress", "disable progress output")
   .configureOutput({
     writeErr: (message) => {
@@ -392,7 +393,7 @@ program
     } else {
       process.stderr.write(
         [
-          "Local environment access:",
+          record.provider === "local" ? "Local environment access:" : "Tunnel open until this command stops:",
           `  Dashboard: ${access?.dashboard ?? "http://localhost:18080/"}`,
           `  GraphQL:  ${access?.graphql ?? "http://localhost:18080/graphql/"}`,
           `  Raw Core: ${access?.rawGraphql ?? "http://localhost:18000/graphql/"}`,

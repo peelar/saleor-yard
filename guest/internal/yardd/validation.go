@@ -35,9 +35,10 @@ func ValidateJob(job Job) error {
 	if err != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return fmt.Errorf("private URL must be an allowed origin")
 	}
+	isExeDev := parsed.Scheme == "https" && strings.HasSuffix(parsed.Hostname(), ".exe.xyz")
 	isLocal := parsed.Scheme == "http" && (parsed.Hostname() == "127.0.0.1" || parsed.Hostname() == "localhost") && parsed.Port() != ""
-	if !isLocal {
-		return fmt.Errorf("private URL must use a local forwarded port")
+	if !isExeDev && !isLocal {
+		return fmt.Errorf("private URL must use a private exe.dev domain or a local forwarded port")
 	}
 	return nil
 }
