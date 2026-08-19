@@ -6,6 +6,7 @@ import { toYardError, YardError } from "./domain/errors.js";
 import type {
   CommandResult,
   CreatePlan,
+  DestroyAllReport,
   DoctorReport,
   EnvironmentRecord,
   ProviderName,
@@ -124,6 +125,14 @@ function printPruneReport(report: PruneReport): void {
   }
 }
 
+function printDestroyAllReport(report: DestroyAllReport): void {
+  process.stdout.write(`Deleted ${report.deleted.length} saved environment(s).\n`);
+  process.stdout.write(`Deleted ${report.orphanedResources.length} orphaned provider resource(s).\n`);
+  for (const failure of report.failures) {
+    process.stderr.write(`${failure.environmentId}: ${failure.message}\n`);
+  }
+}
+
 const engine = createEngine();
 const config = loadConfig();
 const program = new Command();
@@ -188,6 +197,10 @@ program
         process.stderr,
         program.opts<{ progress: boolean }>().progress && !options.dryRun,
       );
+      const controller = new AbortController();
+      const stop = () => controller.abort();
+      process.once("SIGINT", stop);
+      process.once("SIGTERM", stop);
       progress.start({ phase: "resolving_source", state: "requested" });
       try {
         const result = await engine.create(
@@ -196,8 +209,14 @@ program
             ttlMinutes: parseDuration(options.ttl),
             dryRun: options.dryRun ?? false,
             provider: parseProvider(program.opts<{ provider: string }>().provider),
+            signal: controller.signal,
           },
           (updated) => progress.update(updated),
+          (report) => {
+            if (report.deleted.length > 0) {
+              process.stderr.write(`Removed ${report.deleted.length} expired environment(s) before creating a new one.\n`);
+            }
+          },
         );
 
         if ("resources" in result) {
@@ -212,6 +231,7 @@ program
             parsePositiveInteger(options.waitTimeout, "Wait timeout"),
             5_000,
             (updated) => progress.update(updated),
+            controller.signal,
           );
         }
         progress.stop();
@@ -220,6 +240,8 @@ program
           process.exitCode = 1;
         }
       } finally {
+        process.off("SIGINT", stop);
+        process.off("SIGTERM", stop);
         progress.stop();
       }
     },
@@ -470,10 +492,23 @@ program
 
 program
   .command("destroy")
-  .description("Delete an environment and its provider resource.")
-  .argument("<environment>")
+  .description("Delete one environment, or every Saleor Yard environment with --all.")
+  .argument("[environment]")
+  .option("--all", "delete every saved environment and orphaned provider resource")
   .option("--json", "write machine-readable JSON")
-  .action(async (id: string, options: { json?: boolean }) => {
+  .action(async (id: string | undefined, options: { all?: boolean; json?: boolean }) => {
+    if (options.all && id) {
+      throw new YardError("invalid_destroy_target", "Choose an environment ID or --all, not both.");
+    }
+    if (options.all) {
+      const report = await engine.destroyAll();
+      options.json ? writeJson(report) : printDestroyAllReport(report);
+      if (report.failures.length > 0) process.exitCode = 1;
+      return;
+    }
+    if (!id) {
+      throw new YardError("missing_destroy_target", "Provide an environment ID or use --all.");
+    }
     const record = await engine.destroy(id);
     options.json ? writeJson(record) : printEnvironment(record);
   });

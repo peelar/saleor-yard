@@ -56,4 +56,17 @@ describe("CLI progress", () => {
     expect(output).toContain("env_20260818120000_abc123:");
     expect(output).toContain("60%  Applying database migrations");
   });
+
+  it("prints the environment ID once before interactive progress", () => {
+    let output = "";
+    const stream = { isTTY: true, columns: 100, write: (text: string) => { output += text; } };
+    const progress = new CliProgress(stream, true, () => 10_000);
+
+    progress.start({ phase: "resolving_source", state: "requested" });
+    progress.update(record("building_core"));
+    progress.update(record("migrating_database"));
+    progress.stop();
+
+    expect(output.match(/Environment: env_20260818120000_abc123/g)).toHaveLength(1);
+  });
 });

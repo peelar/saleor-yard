@@ -65,8 +65,13 @@ class FakeResolver implements SourceResolver {
 class FakeProvider implements EnvironmentProvider {
   readonly name = "local" as const;
   createCalls = 0;
+  doctorCalls = 0;
   destroyCalls = 0;
+  destroyFailure?: Error;
+  orphanedResources: string[] = [];
   createFailure?: Error;
+  inspectFailure?: Error;
+  doctorReport: DoctorReport = { ok: true, provider: "local", checks: [] };
   status: ProviderStatus = {
     state: "ready",
     phase: "ready",
@@ -74,7 +79,8 @@ class FakeProvider implements EnvironmentProvider {
   };
 
   async doctor(): Promise<DoctorReport> {
-    return { ok: true, provider: "local", checks: [] };
+    this.doctorCalls += 1;
+    return this.doctorReport;
   }
 
   plan(record: EnvironmentRecord): CreatePlan {
@@ -107,6 +113,7 @@ class FakeProvider implements EnvironmentProvider {
   }
 
   async inspect(): Promise<ProviderStatus> {
+    if (this.inspectFailure) throw this.inspectFailure;
     return this.status;
   }
 
@@ -131,6 +138,11 @@ class FakeProvider implements EnvironmentProvider {
 
   async destroy(): Promise<void> {
     this.destroyCalls += 1;
+    if (this.destroyFailure) throw this.destroyFailure;
+  }
+
+  async destroyOwnedOrphans() {
+    return { deleted: this.orphanedResources, failures: [] };
   }
 }
 
@@ -155,6 +167,75 @@ describe("EnvironmentEngine", () => {
     expect("resources" in result).toBe(true);
     expect(provider.createCalls).toBe(0);
     expect(repository.records.size).toBe(0);
+  });
+
+  it("stops before source resolution when the provider preflight fails", async () => {
+    const { engine, provider, resolver, repository } = setup();
+    provider.doctorReport = {
+      ok: false,
+      provider: "local",
+      checks: [{
+        name: "Docker builder",
+        ok: false,
+        message: "The Docker daemon is not running. Start your Docker-compatible runtime, verify it with `docker info`, then retry.",
+      }],
+    };
+
+    await expect(engine.create(
+      "pr:123",
+      { ttlMinutes: 30, dryRun: false, provider: "local" },
+    )).rejects.toMatchObject({ code: "provider_preflight_failed" });
+
+    expect(provider.doctorCalls).toBe(1);
+    expect(provider.createCalls).toBe(0);
+    expect(resolver.calls).toHaveLength(0);
+    expect(repository.records.size).toBe(0);
+  });
+
+  it("prunes expired environments before checking the provider", async () => {
+    const { engine, provider, repository } = setup();
+    const expired: EnvironmentRecord = {
+      schemaVersion: 1,
+      id: "env_20260818090000_exp001",
+      provider: "local",
+      state: "failed",
+      phase: "failed",
+      source: resolvedSource,
+      createdAt: "2026-08-18T09:00:00.000Z",
+      updatedAt: "2026-08-18T09:00:00.000Z",
+      expiresAt: "2026-08-18T09:30:00.000Z",
+    };
+    await repository.save(expired);
+
+    await engine.create("pr:123", { ttlMinutes: 30, dryRun: false, provider: "local" });
+
+    expect(provider.destroyCalls).toBe(1);
+    expect(provider.doctorCalls).toBe(1);
+    expect((await repository.get(expired.id)).state).toBe("deleted");
+  });
+
+  it("does not allocate another environment when automatic cleanup fails", async () => {
+    const { engine, provider, repository } = setup();
+    provider.destroyFailure = new Error("Lima could not delete the expired environment");
+    await repository.save({
+      schemaVersion: 1,
+      id: "env_20260818090000_exp002",
+      provider: "local",
+      state: "failed",
+      phase: "failed",
+      source: resolvedSource,
+      createdAt: "2026-08-18T09:00:00.000Z",
+      updatedAt: "2026-08-18T09:00:00.000Z",
+      expiresAt: "2026-08-18T09:30:00.000Z",
+    });
+
+    await expect(engine.create(
+      "pr:123",
+      { ttlMinutes: 30, dryRun: false, provider: "local" },
+    )).rejects.toMatchObject({ code: "automatic_prune_failed" });
+
+    expect(provider.doctorCalls).toBe(0);
+    expect(provider.createCalls).toBe(0);
   });
 
   it("stores the environment and its stable access details", async () => {
@@ -210,6 +291,32 @@ describe("EnvironmentEngine", () => {
     expect(result.state).toBe("failed");
   });
 
+  it("fails a wait after three consecutive provider inspection errors", async () => {
+    const { engine, provider } = setup();
+    const created = await engine.create("pr:123", { ttlMinutes: 30, dryRun: false, provider: "local" });
+    if ("resources" in created) throw new Error("Expected an environment");
+    provider.inspectFailure = new Error("VM control channel is unavailable");
+
+    const result = await engine.wait(created.id, 1, 1);
+
+    expect(result.state).toBe("failed");
+    expect(result.failure?.message).toContain("after 3 attempts");
+  });
+
+  it("stops waiting on cancellation without deleting the accepted environment", async () => {
+    const { engine, provider } = setup();
+    const created = await engine.create("pr:123", { ttlMinutes: 30, dryRun: false, provider: "local" });
+    if ("resources" in created) throw new Error("Expected an environment");
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(engine.wait(created.id, 1, 1, undefined, controller.signal)).rejects.toMatchObject({
+      code: "wait_cancelled",
+      details: { environmentId: created.id },
+    });
+    expect(provider.destroyCalls).toBe(0);
+  });
+
   it("deletes expired environments and leaves active ones alone", async () => {
     const { engine, repository, provider } = setup();
     const expired = await engine.create("pr:123", { ttlMinutes: 30, dryRun: false, provider: "local" });
@@ -228,7 +335,7 @@ describe("EnvironmentEngine", () => {
     expect((await repository.get(active.id)).state).not.toBe("deleted");
   });
 
-  it("can delete a failed record when no provider resource was created", async () => {
+  it("derives and deletes the provider resource for an interrupted record", async () => {
     const { engine, provider, repository } = setup();
     provider.createFailure = new Error("Environment allocation failed");
     await expect(engine.create("pr:123", { ttlMinutes: 30, dryRun: false, provider: "local" })).rejects.toThrow();
@@ -238,6 +345,19 @@ describe("EnvironmentEngine", () => {
     const deleted = await engine.destroy(failed.id);
 
     expect(deleted.state).toBe("deleted");
-    expect(provider.destroyCalls).toBe(0);
+    expect(provider.destroyCalls).toBe(1);
+    expect(deleted.providerResourceId).toBe("sy-test");
+  });
+
+  it("deletes every saved environment and remaining owned provider resource", async () => {
+    const { engine, provider } = setup();
+    provider.orphanedResources = ["sy-release-orphan"];
+    await engine.create("pr:123", { ttlMinutes: 30, dryRun: false, provider: "local" });
+
+    const report = await engine.destroyAll();
+
+    expect(report.deleted).toHaveLength(1);
+    expect(report.orphanedResources).toEqual(["sy-release-orphan"]);
+    expect(provider.destroyCalls).toBe(1);
   });
 });

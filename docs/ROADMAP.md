@@ -23,6 +23,8 @@ Work order:
 8. [x] Add the local Lima provider.
 9. [x] Complete the first live local environment proof.
 10. [x] Prove a smaller default resource profile under a real workload.
+11. [x] Add crash-safe resource tracking, automatic expiry cleanup, bulk
+    destruction, and stale-provisioning detection.
 
 ## Later
 

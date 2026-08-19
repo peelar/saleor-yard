@@ -36,6 +36,7 @@ const environmentRecordSchema = z.object({
   state: z.enum(environmentStates),
   phase: environmentPhaseSchema,
   source: resolvedSourceSchema,
+  providerResourceId: z.string().optional(),
   providerEnvironment: z.object({
     provider: z.literal("local"),
     providerId: z.string(),

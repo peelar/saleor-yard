@@ -73,6 +73,11 @@ default.
 The store contains identifiers, source metadata, timestamps, and access
 metadata. It must not contain provider private keys or long-lived secrets.
 
+The intended provider resource name is saved before allocation starts. This is
+important for crash recovery: cleanup can still find a partially created
+resource when the CLI was interrupted before the provider returned access
+details.
+
 A deployed service will replace this store with a database without changing the
 engine contract.
 
@@ -95,6 +100,11 @@ local HTTP requests.
 8. starts services;
 9. checks GraphQL and Dashboard readiness;
 10. records structured events and full logs.
+
+The guest keeps its latest status in memory as well as on disk. If a full or
+read-only disk prevents persistence, the live control channel can still report
+the failure. Long operations refresh a heartbeat, and the complete provisioning
+run has a bounded deadline.
 
 After the Core image is built, the guest removes unused Docker build cache. The
 cache is not useful in today's one-build disposable environment. The Saleor
@@ -150,6 +160,11 @@ The engine owns expiry decisions through `pruneExpired`. The CLI exposes a
 single check as `saleor-yard prune`. The reusable expiry worker calls the same
 engine operation continuously. A deployed control plane must supervise that
 worker. A timestamp by itself does not delete an environment.
+
+The engine also runs `pruneExpired` before every real create operation. The
+provider can remove resources in Saleor Yard's reserved namespace during an
+explicit `destroy --all`; this reconciles resources left behind by an
+interrupted controller process without exposing provider commands to users.
 
 ## Security boundary
 

@@ -76,6 +76,7 @@ export class CliProgress {
   private lastPrintedKey = "";
   private startedAt = 0;
   private timer: ReturnType<typeof setInterval> | undefined;
+  private announcedEnvironmentId: string | undefined;
 
   constructor(
     private readonly output: ProgressStream,
@@ -112,6 +113,10 @@ export class CliProgress {
     if (!this.active) {
       this.start(update);
       return;
+    }
+    if (this.output.isTTY && update.environmentId && update.environmentId !== this.announcedEnvironmentId) {
+      this.output.write(`\r\u001B[2KEnvironment: ${update.environmentId}\n`);
+      this.announcedEnvironmentId = update.environmentId;
     }
     this.current = update;
     this.writeUpdate();

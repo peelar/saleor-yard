@@ -23,7 +23,7 @@ starts a fresh Saleor stack, and gives you Dashboard, GraphQL, logs, remote
 commands inside the VM, and a clear way to delete everything when you are done.
 
 ```bash
-pnpm saleor-yard create pr:19668 --ttl 2h
+pnpm saleor-yard create release:3.21.69
 ```
 
 ## Why use it?
@@ -36,19 +36,16 @@ create an environment, wait for it to become ready, call GraphQL, read logs, run
 commands, and destroy the environment without learning Docker Compose, Lima,
 or port forwarding.
 
-Every environment includes:
+Each environment runs a complete disposable Saleor development stack at the
+requested Core revision, including Dashboard, worker, Postgres, cache, sample
+data, migrations, Mailpit, and Jaeger. Yard provides loopback access, logs, and
+explicit cleanup commands.
 
-- the exact requested Saleor Core commit;
-- Saleor Dashboard, Core, worker, Postgres, and cache;
-- sample data and completed database migrations;
-- Mailpit and Jaeger for debugging;
-- private or loopback-only access;
-- provisioning and service logs;
-- an expiry time and explicit cleanup commands.
-
-Pull request code is treated as untrusted. Provider credentials are never copied
-into the created environment, and an environment is not reported as ready until
-its readiness checks pass.
+> Note: A Saleor Yard environment is a temporary isolated development
+> environment, not a production instance. The current local provider runs it
+> inside a Linux VM managed by Lima on macOS. The VM is an implementation
+> detail, so future providers can use other isolation methods without changing
+> the CLI or environment engine.
 
 The default environment is intentionally small: 2 CPUs, 4 GB of memory, and a
 20 GB disk. It is sized for development, not production Saleor traffic.
@@ -59,7 +56,7 @@ You need Node.js 22, Lima 2.x, and Docker on macOS.
 
 ```bash
 ./setup
-pnpm saleor-yard create pr:19668 --ttl 2h
+pnpm saleor-yard create release:3.21.69 --ttl 2h
 ```
 
 `./setup` installs the exact pnpm version and project dependencies, then checks
@@ -96,8 +93,19 @@ pnpm saleor-yard tunnel env_abc123
 pnpm saleor-yard destroy env_abc123
 ```
 
+The interactive create command prints the environment ID before long setup work
+starts. If another terminal needs it, `pnpm saleor-yard list` prints saved IDs in
+the first column.
+
+Delete every Saleor Yard environment and any safely identified orphan:
+
+```bash
+pnpm saleor-yard destroy --all
+```
+
 For continuous expiry cleanup, run `pnpm saleor-yard expiry-worker --interval 1m`
 under a process manager. The future private service will run the same worker.
+Yard also removes expired environments automatically before every new create.
 
 Local environments run in a Linux VM on your Mac. The provider boundary remains
 in place so a future private HTTP API can offer the same behavior through a

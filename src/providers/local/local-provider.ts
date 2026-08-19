@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, statfs } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -26,6 +26,9 @@ const platformCommit = "ab6315bd59c58b4815175df4c679107ff9695be4";
 const defaultDashboardTag = "3.23";
 const guestPorts = { gateway: 8080, core: 8000, mailpit: 8025, jaeger: 16686 } as const;
 const services = new Set(["api", "worker", "db", "cache", "dashboard", "gateway", "mailpit", "jaeger"]);
+const ownedResourceName = /^sy-(?:release|branch|commit|pr-[1-9][0-9]*)-[a-f0-9]{6}$/;
+const maxProvisioningStatusAgeMs = 90_000;
+const limaInstanceSchema = z.object({ name: z.string() });
 const providerPhaseSchema = z.preprocess(
   (value) => value === "provisioning_vm" ? "allocating_environment" : value,
   z.enum([
@@ -56,6 +59,7 @@ export interface LocalProviderOptions {
   ports?: LocalProviderEnvironment["ports"];
   projectRoot?: string;
   yarddBinary?: string;
+  freeDiskBytes?: () => Promise<number>;
 }
 
 function parseJson(output: string): unknown {
@@ -74,6 +78,14 @@ function requireLocalEnvironment(record: EnvironmentRecord): LocalProviderEnviro
   return environment;
 }
 
+function localResourceName(record: EnvironmentRecord): string {
+  const name = record.providerEnvironment?.providerId ?? record.providerResourceId;
+  if (!name || !ownedResourceName.test(name)) {
+    throw new YardError("environment_not_provisioned", `Environment ${record.id} does not have a safe local resource name.`);
+  }
+  return name;
+}
+
 export class LocalProvider implements EnvironmentProvider {
   readonly name = "local" as const;
   private readonly cpu: number;
@@ -82,6 +94,7 @@ export class LocalProvider implements EnvironmentProvider {
   private readonly configuredPorts: LocalProviderEnvironment["ports"] | undefined;
   private readonly projectRoot: string;
   private readonly yarddBinary: string | undefined;
+  private readonly freeDiskBytes: () => Promise<number>;
 
   constructor(private readonly runner: CommandRunner, options: LocalProviderOptions = {}) {
     this.cpu = options.cpu ?? defaultResourceProfile.cpu;
@@ -90,6 +103,10 @@ export class LocalProvider implements EnvironmentProvider {
     this.configuredPorts = options.ports;
     this.projectRoot = options.projectRoot ?? resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
     this.yarddBinary = options.yarddBinary ?? process.env.SALEOR_YARD_LOCAL_YARDD;
+    this.freeDiskBytes = options.freeDiskBytes ?? (async () => {
+      const stats = await statfs(tmpdir(), { bigint: true });
+      return Number(stats.bavail * stats.bsize);
+    });
   }
 
   async doctor(): Promise<DoctorReport> {
@@ -98,6 +115,7 @@ export class LocalProvider implements EnvironmentProvider {
     if (!this.yarddBinary) {
       checks.push(await this.commandCheck("Docker builder", "docker", ["version", "--format", "{{.Server.Version}}"]));
     }
+    checks.push(await this.diskSpaceCheck());
     return { ok: checks.every((check) => check.ok), provider: "local", checks };
   }
 
@@ -113,37 +131,47 @@ export class LocalProvider implements EnvironmentProvider {
     };
   }
 
-  async create(record: EnvironmentRecord): Promise<{ environment: LocalProviderEnvironment; access: EnvironmentAccess }> {
+  async create(record: EnvironmentRecord, signal?: AbortSignal): Promise<{ environment: LocalProviderEnvironment; access: EnvironmentAccess }> {
+    if (!this.yarddBinary) {
+      await this.requireDockerBuilder(signal);
+    }
+
     const name = this.vmName(record);
     const ports = this.configuredPorts ?? await this.availablePortsFor(record);
-    const create = await this.runner.run("limactl", [
-      "create", "--tty=false", `--name=${name}`, `--cpus=${this.cpu}`,
-      `--memory=${this.memoryGb}`, `--disk=${this.diskGb}`, "--mount-none",
-      `--port-forward=${ports.gateway}:${guestPorts.gateway},static=true`,
-      `--port-forward=${ports.core}:${guestPorts.core},static=true`,
-      `--port-forward=${ports.mailpit}:${guestPorts.mailpit},static=true`,
-      `--port-forward=${ports.jaeger}:${guestPorts.jaeger},static=true`,
-      "template:docker-rootful",
-    ], { timeoutMs: 600_000 });
+    let create: CommandResult;
+    try {
+      create = await this.runner.run("limactl", [
+        "create", "--tty=false", `--name=${name}`, `--cpus=${this.cpu}`,
+        `--memory=${this.memoryGb}`, `--disk=${this.diskGb}`, "--mount-none",
+        `--port-forward=${ports.gateway}:${guestPorts.gateway},static=true`,
+        `--port-forward=${ports.core}:${guestPorts.core},static=true`,
+        `--port-forward=${ports.mailpit}:${guestPorts.mailpit},static=true`,
+        `--port-forward=${ports.jaeger}:${guestPorts.jaeger},static=true`,
+        "template:docker-rootful",
+      ], { timeoutMs: 600_000, ...(signal ? { signal } : {}) });
+    } catch (error) {
+      await this.runner.run("limactl", ["delete", "--force", name], { timeoutMs: 120_000 });
+      throw error;
+    }
     if (create.exitCode !== 0) {
       await this.runner.run("limactl", ["delete", "--force", name], { timeoutMs: 120_000 });
       throw new YardError("provider_create_failed", create.stderr.trim() || "Lima could not create the VM.");
     }
 
     try {
-      await this.mustRun("limactl", ["start", "--tty=false", name], "Lima could not start the VM.", 600_000);
-      const artifact = await this.prepareYardd();
+      await this.mustRun("limactl", ["start", "--tty=false", name], "Lima could not start the VM.", 600_000, signal);
+      const artifact = await this.prepareYardd(signal);
       try {
-        await this.mustRun("limactl", ["copy", artifact.path, `${name}:/tmp/yardd`], "Could not copy yardd into the VM.", 120_000);
-        await this.mustRun("limactl", ["copy", join(this.projectRoot, "images", "yardd.service"), `${name}:/tmp/yardd.service`], "Could not copy the yardd service into the VM.", 120_000);
+        await this.mustRun("limactl", ["copy", artifact.path, `${name}:/tmp/yardd`], "Could not copy yardd into the VM.", 120_000, signal);
+        await this.mustRun("limactl", ["copy", join(this.projectRoot, "images", "yardd.service"), `${name}:/tmp/yardd.service`], "Could not copy the yardd service into the VM.", 120_000, signal);
       } finally {
         await artifact.cleanup();
       }
-      await this.guestMustRun(name, ["sudo", "install", "-m", "0755", "/tmp/yardd", "/usr/local/bin/yardd"], "Could not install yardd.");
-      await this.guestMustRun(name, ["sudo", "install", "-m", "0644", "/tmp/yardd.service", "/etc/systemd/system/yardd.service"], "Could not install the yardd service.");
-      await this.guestMustRun(name, ["sudo", "systemctl", "daemon-reload"], "Could not reload systemd.");
-      await this.guestMustRun(name, ["sudo", "systemctl", "enable", "--now", "yardd.service"], "Could not start yardd.");
-      await this.waitForYardd(name);
+      await this.guestMustRun(name, ["sudo", "install", "-m", "0755", "/tmp/yardd", "/usr/local/bin/yardd"], "Could not install yardd.", 60_000, undefined, signal);
+      await this.guestMustRun(name, ["sudo", "install", "-m", "0644", "/tmp/yardd.service", "/etc/systemd/system/yardd.service"], "Could not install the yardd service.", 60_000, undefined, signal);
+      await this.guestMustRun(name, ["sudo", "systemctl", "daemon-reload"], "Could not reload systemd.", 60_000, undefined, signal);
+      await this.guestMustRun(name, ["sudo", "systemctl", "enable", "--now", "yardd.service"], "Could not start yardd.", 60_000, undefined, signal);
+      await this.waitForYardd(name, signal);
 
       const gatewayUrl = `http://127.0.0.1:${ports.gateway}`;
       const job = JSON.stringify({
@@ -155,7 +183,7 @@ export class LocalProvider implements EnvironmentProvider {
         dashboardTag: record.source.versionLine ?? defaultDashboardTag,
         privateUrl: gatewayUrl,
       });
-      await this.guestMustRun(name, ["sudo", "yardd", "provision", "--job", "-"], "yardd did not accept the provisioning job.", 30_000, job);
+      await this.guestMustRun(name, ["sudo", "yardd", "provision", "--job", "-"], "yardd did not accept the provisioning job.", 30_000, job, signal);
 
       return {
         environment: { provider: "local", providerId: name, name, ports },
@@ -177,11 +205,23 @@ export class LocalProvider implements EnvironmentProvider {
     const environment = requireLocalEnvironment(record);
     const result = await this.runGuest(environment.name, ["sudo", "yardd", "status"], 20_000);
     if (result.exitCode !== 0) {
-      return { state: "provisioning", phase: "allocating_environment", updatedAt: new Date().toISOString() };
+      throw new YardError(
+        "provider_inspect_failed",
+        result.stderr.trim() || `Could not read status from local environment ${record.id}.`,
+      );
     }
     const parsed = providerStatusSchema.parse(parseJson(result.stdout));
     if (parsed.commit && parsed.commit !== record.source.commit) {
       throw new YardError("guest_commit_mismatch", `yardd reports ${parsed.commit}, but ${record.source.commit} was requested.`);
+    }
+    if (
+      parsed.state === "provisioning"
+      && Date.now() - new Date(parsed.updatedAt).getTime() > maxProvisioningStatusAgeMs
+    ) {
+      throw new YardError(
+        "provider_status_stale",
+        `Environment ${record.id} has not reported progress for more than 90 seconds.`,
+      );
     }
     return parsed.state === "requested"
       ? { state: "provisioning", phase: "allocating_environment", updatedAt: parsed.updatedAt }
@@ -223,11 +263,37 @@ export class LocalProvider implements EnvironmentProvider {
   }
 
   async destroy(record: EnvironmentRecord): Promise<void> {
-    const environment = requireLocalEnvironment(record);
-    const result = await this.runner.run("limactl", ["delete", "--force", environment.name], { timeoutMs: 120_000 });
+    const name = record.providerResourceId ? localResourceName(record) : this.vmName(record);
+    const result = await this.runner.run("limactl", ["delete", "--force", name], { timeoutMs: 120_000 });
     if (result.exitCode !== 0 && !/does not exist|not found/i.test(result.stderr)) {
-      throw new YardError("provider_destroy_failed", result.stderr.trim() || `Lima could not delete ${environment.name}.`);
+      throw new YardError("provider_destroy_failed", result.stderr.trim() || `Lima could not delete ${name}.`);
     }
+  }
+
+  async destroyOwnedOrphans(): Promise<{
+    deleted: string[];
+    failures: Array<{ providerId: string; message: string }>;
+  }> {
+    const listed = await this.runner.run("limactl", ["list", "--json"], { timeoutMs: 20_000 });
+    if (listed.exitCode !== 0) {
+      throw new YardError("provider_list_failed", listed.stderr.trim() || "Lima could not list local environments.");
+    }
+
+    const names = listed.stdout.split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => limaInstanceSchema.parse(parseJson(line)).name)
+      .filter((name) => ownedResourceName.test(name));
+    const report = { deleted: [] as string[], failures: [] as Array<{ providerId: string; message: string }> };
+    for (const name of names) {
+      const result = await this.runner.run("limactl", ["delete", "--force", name], { timeoutMs: 120_000 });
+      if (result.exitCode === 0 || /does not exist|not found/i.test(result.stderr)) {
+        report.deleted.push(name);
+      } else {
+        report.failures.push({ providerId: name, message: result.stderr.trim() || `Lima could not delete ${name}.` });
+      }
+    }
+    return report;
   }
 
   private vmName(record: EnvironmentRecord): string {
@@ -261,13 +327,39 @@ export class LocalProvider implements EnvironmentProvider {
     });
   }
 
-  private async prepareYardd(): Promise<{ path: string; cleanup: () => Promise<void> }> {
+  private async requireDockerBuilder(signal?: AbortSignal): Promise<void> {
+    let result: CommandResult;
+    try {
+      result = await this.runner.run("docker", ["version", "--format", "{{.Server.Version}}"], { timeoutMs: 20_000, ...(signal ? { signal } : {}) });
+    } catch (error) {
+      throw new YardError(
+        "docker_unavailable",
+        "Docker is not installed or is not on PATH. Install a Docker-compatible runtime, then retry.",
+        error,
+      );
+    }
+    if (result.exitCode === 0) return;
+
+    const detail = result.stderr.trim();
+    const message = /\.orbstack\/run\/docker\.sock|orbstack/i.test(detail)
+      ? "Docker is unavailable because OrbStack is not running. Start OrbStack, verify it with `docker info`, then retry."
+      : "The Docker daemon is not running. Start your Docker-compatible runtime, verify it with `docker info`, then retry.";
+    throw new YardError("docker_unavailable", message, detail ? { detail } : undefined);
+  }
+
+  private async prepareYardd(signal?: AbortSignal): Promise<{ path: string; cleanup: () => Promise<void> }> {
     if (this.yarddBinary) return { path: this.yarddBinary, cleanup: async () => {} };
     const directory = await mkdtemp(join(tmpdir(), "saleor-yard-"));
-    const result = await this.runner.run("docker", [
-      "build", "--file", join(this.projectRoot, "images", "local", "Dockerfile"),
-      "--output", `type=local,dest=${directory}`, this.projectRoot,
-    ], { timeoutMs: 600_000 });
+    let result: CommandResult;
+    try {
+      result = await this.runner.run("docker", [
+        "build", "--file", join(this.projectRoot, "images", "local", "Dockerfile"),
+        "--output", `type=local,dest=${directory}`, this.projectRoot,
+      ], { timeoutMs: 600_000, ...(signal ? { signal } : {}) });
+    } catch (error) {
+      await rm(directory, { recursive: true, force: true });
+      throw error;
+    }
     if (result.exitCode !== 0) {
       await rm(directory, { recursive: true, force: true });
       throw new YardError("guest_build_failed", result.stderr.trim() || "Could not build yardd for the local VM.");
@@ -275,23 +367,24 @@ export class LocalProvider implements EnvironmentProvider {
     return { path: join(directory, "yardd"), cleanup: () => rm(directory, { recursive: true, force: true }) };
   }
 
-  private runGuest(name: string, command: string[], timeoutMs?: number, input?: string): Promise<CommandResult> {
-    return this.runner.run("limactl", ["shell", "--workdir=/tmp", name, ...command], { ...(timeoutMs ? { timeoutMs } : {}), ...(input !== undefined ? { input } : {}) });
+  private runGuest(name: string, command: string[], timeoutMs?: number, input?: string, signal?: AbortSignal): Promise<CommandResult> {
+    return this.runner.run("limactl", ["shell", "--workdir=/tmp", name, ...command], { ...(timeoutMs ? { timeoutMs } : {}), ...(input !== undefined ? { input } : {}), ...(signal ? { signal } : {}) });
   }
 
-  private async guestMustRun(name: string, command: string[], message: string, timeoutMs = 60_000, input?: string): Promise<void> {
-    const result = await this.runGuest(name, command, timeoutMs, input);
+  private async guestMustRun(name: string, command: string[], message: string, timeoutMs = 60_000, input?: string, signal?: AbortSignal): Promise<void> {
+    const result = await this.runGuest(name, command, timeoutMs, input, signal);
     if (result.exitCode !== 0) throw new YardError("guest_setup_failed", result.stderr.trim() || message);
   }
 
-  private async mustRun(command: string, args: string[], message: string, timeoutMs: number): Promise<void> {
-    const result = await this.runner.run(command, args, { timeoutMs });
+  private async mustRun(command: string, args: string[], message: string, timeoutMs: number, signal?: AbortSignal): Promise<void> {
+    const result = await this.runner.run(command, args, { timeoutMs, ...(signal ? { signal } : {}) });
     if (result.exitCode !== 0) throw new YardError("provider_create_failed", result.stderr.trim() || message);
   }
 
-  private async waitForYardd(name: string): Promise<void> {
+  private async waitForYardd(name: string, signal?: AbortSignal): Promise<void> {
     for (let attempt = 0; attempt < 30; attempt += 1) {
-      const result = await this.runGuest(name, ["sudo", "yardd", "status"], 20_000);
+      if (signal?.aborted) throw new YardError("create_cancelled", "Creation was cancelled.");
+      const result = await this.runGuest(name, ["sudo", "yardd", "status"], 20_000, undefined, signal);
       if (result.exitCode === 0) return;
       await new Promise((resolvePromise) => setTimeout(resolvePromise, 2_000));
     }
@@ -301,11 +394,38 @@ export class LocalProvider implements EnvironmentProvider {
   private async commandCheck(name: string, command: string, args: string[]): Promise<DoctorCheck> {
     try {
       const result = await this.runner.run(command, args, { timeoutMs: 20_000 });
-      return result.exitCode === 0
-        ? { name, ok: true, message: result.stdout.trim() || "Available." }
-        : { name, ok: false, message: result.stderr.trim() || `${command} is not usable.` };
+      if (result.exitCode === 0) {
+        return { name, ok: true, message: result.stdout.trim() || "Available." };
+      }
+      if (command === "docker") {
+        const detail = result.stderr.trim();
+        const message = /\.orbstack\/run\/docker\.sock|orbstack/i.test(detail)
+          ? "Docker is unavailable because OrbStack is not running. Start OrbStack, verify it with `docker info`, then retry."
+          : "The Docker daemon is not running. Start your Docker-compatible runtime, verify it with `docker info`, then retry.";
+        return { name, ok: false, message };
+      }
+      return { name, ok: false, message: result.stderr.trim() || `${command} is not usable.` };
     } catch {
-      return { name, ok: false, message: `${command} is not installed or is not on PATH.` };
+      const message = command === "docker"
+        ? "Docker is not installed or is not on PATH. Install a Docker-compatible runtime, then retry."
+        : `${command} is not installed or is not on PATH.`;
+      return { name, ok: false, message };
+    }
+  }
+
+  private async diskSpaceCheck(): Promise<DoctorCheck> {
+    const requiredGb = this.diskGb + 5;
+    try {
+      const availableGb = await this.freeDiskBytes() / 1024 ** 3;
+      return availableGb >= requiredGb
+        ? { name: "Host disk space", ok: true, message: `${availableGb.toFixed(1)} GB available.` }
+        : {
+            name: "Host disk space",
+            ok: false,
+            message: `Only ${availableGb.toFixed(1)} GB is available. At least ${requiredGb} GB must be available before creating an environment.`,
+          };
+    } catch {
+      return { name: "Host disk space", ok: false, message: "Could not check available host disk space." };
     }
   }
 }

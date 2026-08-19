@@ -93,6 +93,7 @@ export interface EnvironmentRecord {
   state: EnvironmentState;
   phase: EnvironmentPhase;
   source: ResolvedSource;
+  providerResourceId?: string;
   providerEnvironment?: ProviderEnvironment;
   access?: EnvironmentAccess;
   failure?: EnvironmentFailure;
@@ -169,4 +170,8 @@ export interface PruneReport {
   checkedAt: string;
   deleted: string[];
   failures: PruneFailure[];
+}
+
+export interface DestroyAllReport extends PruneReport {
+  orphanedResources: string[];
 }

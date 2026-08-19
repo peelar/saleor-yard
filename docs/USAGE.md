@@ -107,11 +107,22 @@ Delete one environment:
 pnpm saleor-yard destroy env_abc123 --json
 ```
 
+Delete every Saleor Yard environment, including safely identified orphaned
+provider resources:
+
+```bash
+pnpm saleor-yard destroy --all --json
+```
+
 Delete every saved environment whose lifetime has passed:
 
 ```bash
 pnpm saleor-yard prune --json
 ```
+
+`create` runs this expiry cleanup automatically before allocating a new
+environment. If cleanup fails, creation stops and reports the environments that
+could not be removed.
 
 Run cleanup continuously:
 

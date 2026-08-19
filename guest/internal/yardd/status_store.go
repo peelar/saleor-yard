@@ -11,6 +11,7 @@ import (
 type StatusStore struct {
 	path string
 	mu   sync.RWMutex
+	live *Status
 }
 
 func NewStatusStore(path string) *StatusStore {
@@ -20,6 +21,10 @@ func NewStatusStore(path string) *StatusStore {
 func (s *StatusStore) Read() (Status, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	if s.live != nil {
+		status := *s.live
+		return status, nil
+	}
 
 	data, err := os.ReadFile(s.path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -39,6 +44,9 @@ func (s *StatusStore) Read() (Status, error) {
 func (s *StatusStore) Write(status Status) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// Keep serving the live state even when the disk cannot persist it.
+	// This lets the controller see a failure caused by a full disk.
+	s.live = &status
 
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
 		return err

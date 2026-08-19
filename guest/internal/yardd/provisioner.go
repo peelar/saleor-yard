@@ -20,6 +20,11 @@ type Provisioner struct {
 	running bool
 }
 
+const (
+	provisioningTimeout = 30 * time.Minute
+	heartbeatInterval   = 15 * time.Second
+)
+
 func NewProvisioner(config Config, store *StatusStore) *Provisioner {
 	return &Provisioner{config: config, store: store}
 }
@@ -58,7 +63,8 @@ func (p *Provisioner) run(job Job) {
 	}
 	defer logFile.Close()
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), provisioningTimeout)
+	defer cancel()
 	phase := "allocating_environment"
 	fail := func(cause error) {
 		message := fmt.Sprintf("Provisioning failed during %s. Read the provisioning log for details.", phase)
@@ -72,6 +78,8 @@ func (p *Provisioner) run(job Job) {
 	}
 	run := func(name string, args ...string) error {
 		_, _ = fmt.Fprintf(logFile, "$ %s %s\n", name, strings.Join(args, " "))
+		stopHeartbeat := p.startHeartbeat(ctx, phase, job.Commit)
+		defer stopHeartbeat()
 		_, commandError := p.config.CommandRunner.Run(ctx, logFile, logFile, name, args...)
 		return commandError
 	}
@@ -171,7 +179,10 @@ func (p *Provisioner) run(job Job) {
 		fail(err)
 		return
 	}
-	if err := p.waitForPostgres(ctx, logFile); err != nil {
+	stopHeartbeat := p.startHeartbeat(ctx, phase, job.Commit)
+	err = p.waitForPostgres(ctx, logFile)
+	stopHeartbeat()
+	if err != nil {
 		fail(err)
 		return
 	}
@@ -202,13 +213,40 @@ func (p *Provisioner) run(job Job) {
 		fail(err)
 		return
 	}
-	if err := p.waitForReadiness(ctx, logFile); err != nil {
+	stopHeartbeat = p.startHeartbeat(ctx, phase, job.Commit)
+	err = p.waitForReadiness(ctx, logFile)
+	stopHeartbeat()
+	if err != nil {
 		fail(err)
 		return
 	}
 
 	_, _ = fmt.Fprintf(logFile, "\nSaleor environment is ready.\n")
 	_ = p.store.Write(NewStatus("ready", "ready", job.Commit, ""))
+}
+
+func (p *Provisioner) startHeartbeat(ctx context.Context, phase, commit string) func() {
+	stop := make(chan struct{})
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		ticker := time.NewTicker(heartbeatInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-stop:
+				return
+			case <-ticker.C:
+				_ = p.store.Write(NewStatus("provisioning", phase, commit, ""))
+			}
+		}
+	}()
+	return func() {
+		close(stop)
+		<-stopped
+	}
 }
 
 func pruneBuilderCache(ctx context.Context, runner Runner, log io.Writer) {

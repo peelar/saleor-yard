@@ -125,6 +125,95 @@ describe("LocalProvider", () => {
     }));
   });
 
+  it("deletes an interrupted Lima instance from its saved resource name", async () => {
+    const runner = new FakeRunner([success()]);
+    const provider = new LocalProvider(runner, { ports, yarddBinary: "/artifacts/yardd" });
+    const interrupted = record();
+    interrupted.providerResourceId = "sy-pr-123-abc123";
+
+    await provider.destroy(interrupted);
+
+    expect(runner.calls[0]?.args).toEqual(["delete", "--force", "sy-pr-123-abc123"]);
+  });
+
+  it("deletes only provider-owned orphan names", async () => {
+    const runner = new FakeRunner([
+      success([
+        '{"name":"sy-release-abc123"}',
+        '{"name":"personal-vm"}',
+        '{"name":"sy-release-nothex"}',
+      ].join("\n")),
+      success(),
+    ]);
+    const provider = new LocalProvider(runner, { ports, yarddBinary: "/artifacts/yardd" });
+
+    const report = await provider.destroyOwnedOrphans();
+
+    expect(report.deleted).toEqual(["sy-release-abc123"]);
+    expect(runner.calls.at(-1)?.args).toEqual(["delete", "--force", "sy-release-abc123"]);
+  });
+
+  it("fails inspection when the guest control channel is unavailable", async () => {
+    const runner = new FakeRunner([{ exitCode: 1, stdout: "", stderr: "VM is stopped" }]);
+    const provider = new LocalProvider(runner, { ports, yarddBinary: "/artifacts/yardd" });
+
+    await expect(provider.inspect(provisionedRecord())).rejects.toMatchObject({
+      code: "provider_inspect_failed",
+      message: "VM is stopped",
+    });
+  });
+
+  it("rejects stale provisioning status", async () => {
+    const runner = new FakeRunner([success(JSON.stringify({
+      state: "provisioning",
+      phase: "building_core",
+      updatedAt: "2026-08-18T12:00:00Z",
+      commit: "a".repeat(40),
+    }))]);
+    const provider = new LocalProvider(runner, { ports, yarddBinary: "/artifacts/yardd" });
+
+    await expect(provider.inspect(provisionedRecord())).rejects.toMatchObject({
+      code: "provider_status_stale",
+    });
+  });
+
+  it("reports insufficient host disk space during provider checks", async () => {
+    const runner = new FakeRunner([success("lima version")]);
+    const provider = new LocalProvider(runner, {
+      ports,
+      yarddBinary: "/artifacts/yardd",
+      freeDiskBytes: async () => 8 * 1024 ** 3,
+    });
+
+    const report = await provider.doctor();
+
+    expect(report.ok).toBe(false);
+    expect(report.checks).toContainEqual(expect.objectContaining({
+      name: "Host disk space",
+      ok: false,
+    }));
+  });
+
+  it("reports when OrbStack is not running before creating a Lima instance", async () => {
+    const runner = new FakeRunner([{
+      exitCode: 1,
+      stdout: "",
+      stderr: "failed to connect to unix:///Users/test/.orbstack/run/docker.sock: no such file or directory",
+    }]);
+    const provider = new LocalProvider(runner, { ports, projectRoot: "/project" });
+
+    await expect(provider.create(record())).rejects.toMatchObject({
+      code: "docker_unavailable",
+      message: "Docker is unavailable because OrbStack is not running. Start OrbStack, verify it with `docker info`, then retry.",
+    });
+
+    expect(runner.calls).toHaveLength(1);
+    expect(runner.calls[0]).toMatchObject({
+      command: "docker",
+      args: ["version", "--format", "{{.Server.Version}}"],
+    });
+  });
+
   it("cleans up a partial Lima instance when creation times out", async () => {
     const runner = new FakeRunner([
       { exitCode: 124, stdout: "", stderr: "Command timed out." },
@@ -135,5 +224,22 @@ describe("LocalProvider", () => {
     await expect(provider.create(record())).rejects.toMatchObject({ code: "provider_create_failed" });
 
     expect(runner.calls[1]?.args).toEqual(["delete", "--force", "sy-pr-123-abc123"]);
+  });
+
+  it("cleans up a partial Lima instance when creation is cancelled", async () => {
+    const calls: Array<{ command: string; args: string[] }> = [];
+    const runner: CommandRunner = {
+      async run(command, args) {
+        calls.push({ command, args });
+        if (calls.length === 1) throw new Error("The operation was aborted");
+        return success();
+      },
+    };
+    const provider = new LocalProvider(runner, { ports, yarddBinary: "/artifacts/yardd" });
+    const controller = new AbortController();
+
+    await expect(provider.create(record(), controller.signal)).rejects.toThrow("aborted");
+
+    expect(calls[1]?.args).toEqual(["delete", "--force", "sy-pr-123-abc123"]);
   });
 });

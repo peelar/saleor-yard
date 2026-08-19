@@ -5,6 +5,7 @@ export interface RunCommandOptions {
   input?: string;
   timeoutMs?: number;
   inherit?: boolean;
+  signal?: AbortSignal;
 }
 export interface CommandRunner {
   run(command: string, args: string[], options?: RunCommandOptions): Promise<CommandResult>;
@@ -19,6 +20,7 @@ export class SpawnCommandRunner implements CommandRunner {
     return new Promise((resolve, reject) => {
       const child = spawn(command, args, {
         stdio: options.inherit ? ["inherit", "inherit", "inherit"] : "pipe",
+        ...(options.signal ? { signal: options.signal } : {}),
       });
 
       let stdout = "";

@@ -16,7 +16,7 @@ export interface EnvironmentProvider {
   readonly name: ProviderName;
   doctor(): Promise<DoctorReport>;
   plan(record: EnvironmentRecord): CreatePlan;
-  create(record: EnvironmentRecord): Promise<{
+  create(record: EnvironmentRecord, signal?: AbortSignal): Promise<{
     environment: ProviderEnvironment;
     access: EnvironmentAccess;
   }>;
@@ -26,4 +26,8 @@ export interface EnvironmentProvider {
   http(record: EnvironmentRecord, request: EnvironmentHttpRequest): Promise<EnvironmentHttpResponse>;
   tunnel(record: EnvironmentRecord): Promise<CommandResult>;
   destroy(record: EnvironmentRecord): Promise<void>;
+  destroyOwnedOrphans(): Promise<{
+    deleted: string[];
+    failures: Array<{ providerId: string; message: string }>;
+  }>;
 }

@@ -3,6 +3,7 @@ import { YardError } from "../domain/errors.js";
 import type {
   CommandResult,
   CreatePlan,
+  DestroyAllReport,
   DoctorReport,
   EnvironmentHttpRequest,
   EnvironmentHttpResponse,
@@ -20,7 +21,10 @@ export interface CreateOptions {
   ttlMinutes: number;
   dryRun: boolean;
   provider: ProviderName;
+  signal?: AbortSignal;
 }
+
+const maxConsecutiveInspectionFailures = 3;
 
 export class EnvironmentEngine {
   constructor(
@@ -41,16 +45,43 @@ export class EnvironmentEngine {
     sourceInput: string,
     options: CreateOptions,
     onUpdate?: (record: EnvironmentRecord) => void,
+    onPrune?: (report: PruneReport) => void,
   ): Promise<EnvironmentRecord | CreatePlan> {
     if (!Number.isInteger(options.ttlMinutes) || options.ttlMinutes < 15 || options.ttlMinutes > 24 * 60) {
       throw new YardError("invalid_ttl", "Lifetime must be between 15 minutes and 24 hours.");
     }
 
-    const source = await this.resolver.resolve(parseSourceSelector(sourceInput));
+    const selector = parseSourceSelector(sourceInput);
+
+    if (!options.dryRun) {
+      const pruneReport = await this.pruneExpired();
+      onPrune?.(pruneReport);
+      if (pruneReport.failures.length > 0) {
+        throw new YardError(
+          "automatic_prune_failed",
+          `Could not remove ${pruneReport.failures.length} expired environment(s). Fix cleanup before creating another environment.`,
+          pruneReport,
+        );
+      }
+      const report = await this.providerFor(options.provider).doctor();
+      if (!report.ok) {
+        const failures = report.checks
+          .filter((check) => !check.ok)
+          .map((check) => `${check.name}: ${check.message}`)
+          .join(" ");
+        throw new YardError(
+          "provider_preflight_failed",
+          failures || `Provider ${options.provider} is not usable. Run saleor-yard doctor for details.`,
+        );
+      }
+    }
+
+    const source = await this.resolver.resolve(selector);
     const now = new Date();
+    const id = this.createId();
     const record: EnvironmentRecord = {
       schemaVersion: 1,
-      id: this.createId(),
+      id,
       provider: options.provider,
       state: "requested",
       phase: "resolving_source",
@@ -59,6 +90,7 @@ export class EnvironmentEngine {
       updatedAt: now.toISOString(),
       expiresAt: new Date(now.getTime() + options.ttlMinutes * 60_000).toISOString(),
     };
+    record.providerResourceId = this.providerFor(record.provider).plan(record).resourceName;
 
     if (options.dryRun) {
       return this.providerFor(record.provider).plan(record);
@@ -71,14 +103,16 @@ export class EnvironmentEngine {
     await this.store.save(record);
     onUpdate?.(record);
     try {
-      const created = await this.providerFor(record.provider).create(record);
+      const created = await this.providerFor(record.provider).create(record, options.signal);
       record.providerEnvironment = created.environment;
       record.access = created.access;
       record.updatedAt = new Date().toISOString();
       await this.store.save(record);
       return record;
     } catch (error) {
-      const failure = error instanceof YardError
+      const failure = options.signal?.aborted
+        ? new YardError("create_cancelled", "Creation was cancelled. Yard attempted to remove partial provider resources.")
+        : error instanceof YardError
         ? error
         : new YardError("environment_create_failed", error instanceof Error ? error.message : "Environment allocation failed.");
       record.state = "failed";
@@ -133,10 +167,35 @@ export class EnvironmentEngine {
     timeoutMinutes: number,
     intervalMs = 5_000,
     onUpdate?: (record: EnvironmentRecord) => void,
+    signal?: AbortSignal,
   ): Promise<EnvironmentRecord> {
     const deadline = Date.now() + timeoutMinutes * 60_000;
+    let inspectionFailures = 0;
     while (Date.now() < deadline) {
-      const record = await this.get(id, true);
+      if (signal?.aborted) {
+        throw new YardError("wait_cancelled", `Stopped waiting for environment ${id}. Provisioning continues.`, {
+          environmentId: id,
+        });
+      }
+      let record: EnvironmentRecord;
+      try {
+        record = await this.get(id, true);
+        inspectionFailures = 0;
+      } catch (error) {
+        inspectionFailures += 1;
+        if (inspectionFailures < maxConsecutiveInspectionFailures) {
+          await new Promise((resolve) => setTimeout(resolve, intervalMs));
+          continue;
+        }
+        record = await this.store.get(id);
+        record.state = "failed";
+        record.failure = {
+          phase: record.phase,
+          message: `Lost contact with the environment after ${inspectionFailures} attempts: ${error instanceof Error ? error.message : "Provider inspection failed."}`,
+        };
+        record.updatedAt = new Date().toISOString();
+        await this.store.save(record);
+      }
       onUpdate?.(record);
       if (record.state === "ready") {
         return record;
@@ -179,11 +238,10 @@ export class EnvironmentEngine {
     record.state = "deleting";
     record.phase = "deleting";
     record.updatedAt = new Date().toISOString();
+    record.providerResourceId ??= this.providerFor(record.provider).plan(record).resourceName;
     await this.store.save(record);
 
-    if (record.providerEnvironment) {
-      await this.providerFor(record.provider).destroy(record);
-    }
+    await this.providerFor(record.provider).destroy(record);
     record.state = "deleted";
     record.phase = "deleted";
     record.updatedAt = new Date().toISOString();
@@ -213,6 +271,47 @@ export class EnvironmentEngine {
         });
       }
     }
+    return report;
+  }
+
+  async destroyAll(): Promise<DestroyAllReport> {
+    const records = await this.store.list();
+    const report: DestroyAllReport = {
+      checkedAt: new Date().toISOString(),
+      deleted: [],
+      orphanedResources: [],
+      failures: [],
+    };
+
+    for (const record of records) {
+      if (record.state === "deleted") continue;
+      try {
+        await this.destroy(record.id);
+        report.deleted.push(record.id);
+      } catch (error) {
+        report.failures.push({
+          environmentId: record.id,
+          message: error instanceof Error ? error.message : "Could not delete environment.",
+        });
+      }
+    }
+
+    for (const provider of this.providers.values()) {
+      try {
+        const orphanReport = await provider.destroyOwnedOrphans();
+        report.orphanedResources.push(...orphanReport.deleted);
+        report.failures.push(...orphanReport.failures.map((failure) => ({
+          environmentId: failure.providerId,
+          message: failure.message,
+        })));
+      } catch (error) {
+        report.failures.push({
+          environmentId: `provider:${provider.name}`,
+          message: error instanceof Error ? error.message : "Could not inspect provider resources.",
+        });
+      }
+    }
+
     return report;
   }
 

@@ -127,7 +127,8 @@ POST /v1/environments
 Creation is asynchronous. The API returns an environment ID immediately. The
 CLI waits by default and shows progress to feel synchronous; `--no-wait` returns
 the provisioning record immediately. Interactive CLI progress
-shows a spinner, elapsed time, and a 0-100% lifecycle bar. The percentage moves
+prints the environment ID as soon as it is saved, then shows a spinner, elapsed
+time, and a 0-100% lifecycle bar. The percentage moves
 only when Yard reaches a real lifecycle milestone; it is not a time estimate.
 When standard error is not interactive, Yard writes one line per milestone
 instead of terminal animation. `--no-progress` disables both forms.
@@ -235,6 +236,15 @@ environments known to the local CLI. `saleor-yard expiry-worker` runs the same
 cleanup continuously. A deployed control plane must keep that worker running;
 recording a TTL alone does not delete an environment.
 
+`saleor-yard create` runs the same expiry cleanup before it allocates a new
+environment. Creation stops if an expired environment cannot be removed. This
+prevents a new disposable environment from making an existing capacity problem
+worse.
+
+`saleor-yard destroy --all` immediately deletes every saved environment and any
+remaining provider resource that is safely identified as owned by Saleor Yard.
+It continues after individual failures and reports all of them.
+
 ## 6. Lifecycle
 
 ```text
@@ -265,6 +275,10 @@ checking_readiness
 Every state change records a timestamp. `failed` is terminal for provisioning
 but the environment remains inspectable. `deleted` is terminal for the whole
 environment.
+
+Provisioning refreshes its timestamp while a long command is running. The local
+controller treats stale progress and repeated loss of the guest control channel
+as failures. Provisioning also has a bounded overall timeout.
 
 ## 7. Readiness Contract
 
@@ -329,6 +343,7 @@ saleor-yard tunnel <environment>
 saleor-yard prune
 saleor-yard expiry-worker
 saleor-yard destroy <environment>
+saleor-yard destroy --all
 saleor-yard doctor
 ```
 
