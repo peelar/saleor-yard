@@ -10,7 +10,7 @@ func validJob() Job {
 		Commit:         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		PlatformCommit: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		DashboardTag:   "3.23",
-		PrivateURL:     "http://127.0.0.1:28080",
+		PrivateURL:     "https://sy-pr-123-abc123.exe.xyz",
 	}
 }
 
@@ -18,6 +18,15 @@ func TestValidateJob(t *testing.T) {
 	t.Parallel()
 	if err := ValidateJob(validJob()); err != nil {
 		t.Fatalf("valid job was rejected: %v", err)
+	}
+}
+
+func TestValidateJobAcceptsLocalForwardedURL(t *testing.T) {
+	t.Parallel()
+	job := validJob()
+	job.PrivateURL = "http://127.0.0.1:28080"
+	if err := ValidateJob(job); err != nil {
+		t.Fatalf("local job was rejected: %v", err)
 	}
 }
 
@@ -31,8 +40,7 @@ func TestValidateJobRejectsUnsafeInput(t *testing.T) {
 		"moving ref expression":      func(job *Job) { job.SourceRef = "main@{1}" },
 		"shell metacharacter in ref": func(job *Job) { job.SourceRef = "main;shutdown" },
 		"image injection":            func(job *Job) { job.DashboardTag = "3.23;touch" },
-		"remote HTTP URL":            func(job *Job) { job.PrivateURL = "http://remote.example.com:8080" },
-		"remote HTTPS URL":           func(job *Job) { job.PrivateURL = "https://remote.example.com" },
+		"public HTTP URL":            func(job *Job) { job.PrivateURL = "http://sy-pr-123-abc123.exe.xyz" },
 		"local URL without port":     func(job *Job) { job.PrivateURL = "http://localhost" },
 		"wrong private host":         func(job *Job) { job.PrivateURL = "https://attacker.example.com" },
 	}

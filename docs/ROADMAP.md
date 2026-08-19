@@ -15,14 +15,16 @@ Work order:
 
 1. [x] Define the product contract in `SPEC.md`.
 2. [x] Add the environment model, source resolver, state store, and CLI shell.
-3. [x] Add the `yardd` guest runtime and local guest artifact.
-4. [x] Add a provider boundary with a safe dry-run path.
+3. [x] Add the `yardd` guest runtime and versioned VM image.
+4. [x] Add an exe.dev provider with a safe dry-run path.
 5. [x] Provision the Saleor development stack and report phases.
 6. [x] Add status, wait, logs, exec, HTTP access, tunnel, prune, and destroy.
-7. [x] Run local tests and build the guest artifact.
-8. [x] Add the local Lima provider.
+7. [x] Run local tests and build the complete VM image.
+8. [x] Add a Lima provider to prove the design is not tied to exe.dev.
 9. [x] Complete the first live local environment proof.
 10. [x] Prove a smaller default resource profile under a real workload.
+11. [ ] Publish an immutable exe.dev VM image.
+12. [ ] Complete one live exe.dev environment proof.
 
 ## Later
 

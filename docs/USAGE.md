@@ -1,7 +1,7 @@
 # Usage
 
 Saleor Yard is meant to feel like a small remote development machine that an
-agent can control without learning Lima or Docker Compose.
+agent can control without learning Lima, exe.dev, or Docker Compose.
 
 ## Before the first run
 
@@ -15,8 +15,24 @@ The script installs the exact pnpm version and project dependencies, then checks
 Lima and Docker. If one is missing, it tells you what to do next. It does not
 install system tools or change credentials.
 
+The local provider is the default. To use exe.dev instead, run:
+
+```bash
+./setup exedev
+```
+
 The local provider needs Lima 2.x and Docker. On macOS, install Lima with
 `brew install lima`. Saleor runs inside a Linux VM, not directly on macOS.
+
+The exe.dev provider checks the SSH connection and the account's integration
+rules. Saleor runs in a remote VM. Use a dedicated exe.dev account with no
+automatic integrations: Yard refuses to run untrusted code when an
+integration is attached through `auto:all` or the new VM name. It does not add a
+shared VM tag. Changing an automatic rule can affect other VMs on the same
+account.
+
+The current VM image has only been built locally. A live creation also needs a
+published image configured through `SALEOR_YARD_EXEDEV_IMAGE`.
 
 ## Create an environment
 
@@ -27,7 +43,7 @@ would be created, but it does not allocate an environment.
 pnpm saleor-yard create pr:19668 --ttl 30m --dry-run --json
 ```
 
-The local provider uses a small default environment: 2 CPUs, 4 GB of
+Both providers currently use a small default environment: 2 CPUs, 4 GB of
 memory, and a 20 GB disk. It is meant for small catalogs, simple queries, and
 issue reproduction, not production traffic or load testing.
 
@@ -76,7 +92,8 @@ Run a command in the Saleor API container:
 pnpm saleor-yard exec env_abc123 -- python manage.py check
 ```
 
-Make a GraphQL request without opening a browser:
+Make a GraphQL request without opening a browser or handling an HTTPS access
+token:
 
 ```bash
 pnpm saleor-yard http env_abc123 POST /graphql/ \
@@ -97,7 +114,24 @@ pnpm saleor-yard status env_abc123
 Running `saleor-yard tunnel env_abc123` for a local environment only prints the
 same URLs; there is no extra tunnel process to keep alive.
 
+For exe.dev, the returned URL is private and may require an exe.dev browser
+session. The predictable local path is an SSH tunnel:
+
+```bash
+pnpm saleor-yard tunnel env_abc123
+```
+
 Use `--json` when a script needs the access URLs as one machine-readable value.
+
+Keep that command running. The agent can then open:
+
+- Dashboard: `http://localhost:18080/`
+- GraphQL: `http://localhost:18080/graphql/`
+- Mailpit: `http://localhost:18025/`
+- Jaeger: `http://localhost:16686/`
+
+The exe.dev tunnel stops when the command stops. Its fixed ports mean only one
+exe.dev tunnel can run at a time in the first version.
 
 ## Clean up
 
@@ -119,8 +153,9 @@ Run cleanup continuously:
 pnpm saleor-yard expiry-worker --interval 1m
 ```
 
-With `--json`, it writes one JSON object per check. Normal progress and failures
-go to standard error.
+Keep this command under a process manager for remote exe.dev environments. With
+`--json`, it writes one JSON object per check. Normal progress and failures go
+to standard error.
 
 The worker cannot run while your computer is asleep. The future hosted control
 plane must keep the same worker running on an always-on machine. Do not treat

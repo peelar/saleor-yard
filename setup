@@ -8,7 +8,8 @@ show_help() {
     '' \
     'Usage:' \
     '  ./setup          Set up the local Lima provider' \
-    '  ./setup local    Set up the local Lima provider'
+    '  ./setup local    Set up the local Lima provider' \
+    '  ./setup exedev   Set up the exe.dev provider'
 }
 
 provider="${1:-local}"
@@ -18,7 +19,7 @@ case "$provider" in
     show_help
     exit 0
     ;;
-  local)
+  local|exedev)
     ;;
   *)
     printf 'Unknown provider: %s\n\n' "$provider" >&2
@@ -47,13 +48,23 @@ printf '%s\n' 'Installing project dependencies...'
 corepack pnpm install --frozen-lockfile
 
 printf '\nChecking the %s provider...\n' "$provider"
-if ! corepack pnpm saleor-yard doctor; then
+if ! corepack pnpm saleor-yard --provider "$provider" doctor; then
   printf '\nThe project is installed, but the %s provider still needs attention.\n' "$provider" >&2
-  printf '%s\n' \
-    'Install Lima 2.x with: brew install lima' \
-    'Install and start Docker, then run ./setup again.' >&2
+  if [ "$provider" = "local" ]; then
+    printf '%s\n' \
+      'Install Lima 2.x with: brew install lima' \
+      'Install and start Docker, then run ./setup again.' >&2
+  else
+    printf '%s\n' \
+      'Resolve the failed exe.dev check above, then run ./setup exedev again.' \
+      'Remote environments need an account with no automatic integrations.' >&2
+  fi
   exit 1
 fi
 
 printf '\nSetup is complete. Try a dry run:\n'
-printf '%s\n' '  pnpm saleor-yard create pr:19668 --ttl 30m --dry-run --json'
+if [ "$provider" = "local" ]; then
+  printf '%s\n' '  pnpm saleor-yard create pr:19668 --ttl 30m --dry-run --json'
+else
+  printf '%s\n' '  pnpm saleor-yard --provider exedev create pr:19668 --ttl 30m --dry-run --json'
+fi

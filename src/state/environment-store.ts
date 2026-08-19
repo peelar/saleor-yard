@@ -36,17 +36,26 @@ const environmentRecordSchema = z.object({
   state: z.enum(environmentStates),
   phase: environmentPhaseSchema,
   source: resolvedSourceSchema,
-  providerEnvironment: z.object({
-    provider: z.literal("local"),
-    providerId: z.string(),
-    name: z.string(),
-    ports: z.object({
-      gateway: z.number().int().positive(),
-      core: z.number().int().positive(),
-      mailpit: z.number().int().positive(),
-      jaeger: z.number().int().positive(),
+  providerEnvironment: z.discriminatedUnion("provider", [
+    z.object({
+      provider: z.literal("exedev"),
+      providerId: z.string(),
+      name: z.string(),
+      sshDestination: z.string(),
+      privateUrl: z.string().url(),
     }),
-  }).optional(),
+    z.object({
+      provider: z.literal("local"),
+      providerId: z.string(),
+      name: z.string(),
+      ports: z.object({
+        gateway: z.number().int().positive(),
+        core: z.number().int().positive(),
+        mailpit: z.number().int().positive(),
+        jaeger: z.number().int().positive(),
+      }),
+    }),
+  ]).optional(),
   access: z
     .object({
       dashboard: z.string().url(),

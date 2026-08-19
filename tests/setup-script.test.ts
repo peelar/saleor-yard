@@ -10,13 +10,7 @@ describe("setup script", () => {
 
     expect(result.stdout).toContain("Set up Saleor Yard for its first run.");
     expect(result.stdout).toContain("./setup          Set up the local Lima provider");
+    expect(result.stdout).toContain("./setup exedev   Set up the exe.dev provider");
     expect(result.stderr).toBe("");
-  });
-
-  it("rejects unsupported providers before changing the machine", async () => {
-    await expect(execFileAsync("sh", ["setup", "exedev"])).rejects.toMatchObject({
-      code: 2,
-      stderr: expect.stringContaining("Unknown provider: exedev"),
-    });
   });
 });
