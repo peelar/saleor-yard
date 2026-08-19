@@ -8,8 +8,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "build:guest": "docker build --target yardd-build -f images/exedev/Dockerfile .",
-    "build:image": "docker build -f images/exedev/Dockerfile -t saleor-yard-exedev:dev .",
+    "build:guest": "docker build --target build -f images/local/Dockerfile .",
     "build:local-guest": "docker build -f images/local/Dockerfile --output type=local,dest=dist/local-guest .",
     "check": "pnpm typecheck && pnpm test && pnpm build",
     "saleor-yard": "tsx src/cli.ts",

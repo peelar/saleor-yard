@@ -9,7 +9,7 @@ function record(id = "env_20260818120000_abc123"): EnvironmentRecord {
   return {
     schemaVersion: 1,
     id,
-    provider: "exedev",
+    provider: "local",
     state: "requested",
     phase: "resolving_source",
     source: {
@@ -68,7 +68,6 @@ describe("EnvironmentStore", () => {
     const root = await mkdtemp(join(tmpdir(), "saleor-yard-store-"));
     const store = new EnvironmentStore(root);
     const value = record();
-    value.provider = "local";
     value.providerEnvironment = {
       provider: "local",
       providerId: "sy-pr-123-abc123",

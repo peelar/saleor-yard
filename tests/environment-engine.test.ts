@@ -63,7 +63,7 @@ class FakeResolver implements SourceResolver {
 }
 
 class FakeProvider implements EnvironmentProvider {
-  readonly name = "exedev" as const;
+  readonly name = "local" as const;
   createCalls = 0;
   destroyCalls = 0;
   createFailure?: Error;
@@ -74,13 +74,13 @@ class FakeProvider implements EnvironmentProvider {
   };
 
   async doctor(): Promise<DoctorReport> {
-    return { ok: true, provider: "exedev", checks: [] };
+    return { ok: true, provider: "local", checks: [] };
   }
 
   plan(record: EnvironmentRecord): CreatePlan {
     return {
       environmentId: record.id,
-      provider: "exedev",
+      provider: "local",
       resourceName: "sy-test",
       source: record.source,
       resources: { cpu: 4, memoryGb: 8, diskGb: 40 },
@@ -89,21 +89,19 @@ class FakeProvider implements EnvironmentProvider {
     };
   }
 
-  async create(): Promise<{ environment: ProviderEnvironment; access: { dashboard: string; graphql: string; sshDestination: string } }> {
+  async create(): Promise<{ environment: ProviderEnvironment; access: { dashboard: string; graphql: string } }> {
     this.createCalls += 1;
     if (this.createFailure) throw this.createFailure;
     return {
       environment: {
-        provider: "exedev",
+        provider: "local",
         providerId: "sy-test",
         name: "sy-test",
-        sshDestination: "sy-test.exe.xyz",
-        privateUrl: "https://sy-test.exe.xyz",
+        ports: { gateway: 28080, core: 28000, mailpit: 28025, jaeger: 28686 },
       },
       access: {
-        dashboard: "https://sy-test.exe.xyz/",
-        graphql: "https://sy-test.exe.xyz/graphql/",
-        sshDestination: "sy-test.exe.xyz",
+        dashboard: "http://127.0.0.1:28080/",
+        graphql: "http://127.0.0.1:28080/graphql/",
       },
     };
   }
@@ -152,7 +150,7 @@ describe("EnvironmentEngine", () => {
   it("plans a dry run without creating or saving anything", async () => {
     const { engine, provider, repository } = setup();
 
-    const result = await engine.create("pr:123", { ttlMinutes: 30, dryRun: true, provider: "exedev" });
+    const result = await engine.create("pr:123", { ttlMinutes: 30, dryRun: true, provider: "local" });
 
     expect("resources" in result).toBe(true);
     expect(provider.createCalls).toBe(0);
@@ -162,10 +160,10 @@ describe("EnvironmentEngine", () => {
   it("stores the environment and its stable access details", async () => {
     const { engine, provider, repository } = setup();
 
-    const result = await engine.create("pr:123", { ttlMinutes: 30, dryRun: false, provider: "exedev" });
+    const result = await engine.create("pr:123", { ttlMinutes: 30, dryRun: false, provider: "local" });
 
     expect(provider.createCalls).toBe(1);
-    expect("access" in result && result.access?.graphql).toBe("https://sy-test.exe.xyz/graphql/");
+    expect("access" in result && result.access?.graphql).toBe("http://127.0.0.1:28080/graphql/");
     expect(repository.records.size).toBe(1);
   });
 
@@ -175,7 +173,7 @@ describe("EnvironmentEngine", () => {
 
     await engine.create(
       "pr:123",
-      { ttlMinutes: 30, dryRun: false, provider: "exedev" },
+      { ttlMinutes: 30, dryRun: false, provider: "local" },
       ({ state, phase }) => updates.push({ state, phase }),
     );
 
@@ -188,7 +186,7 @@ describe("EnvironmentEngine", () => {
     const { engine, provider, repository } = setup();
     provider.createFailure = new Error("provider unavailable");
 
-    await expect(engine.create("pr:123", { ttlMinutes: 30, dryRun: false, provider: "exedev" })).rejects.toThrow(
+    await expect(engine.create("pr:123", { ttlMinutes: 30, dryRun: false, provider: "local" })).rejects.toThrow(
       "provider unavailable",
     );
 
@@ -203,7 +201,7 @@ describe("EnvironmentEngine", () => {
   it("does not move a failed environment back into provisioning", async () => {
     const { engine, repository, provider } = setup();
     provider.createFailure = new Error("build failed");
-    await expect(engine.create("pr:123", { ttlMinutes: 30, dryRun: false, provider: "exedev" })).rejects.toThrow();
+    await expect(engine.create("pr:123", { ttlMinutes: 30, dryRun: false, provider: "local" })).rejects.toThrow();
     const [failed] = await repository.list();
     if (!failed) throw new Error("Expected failed record");
 
@@ -214,7 +212,7 @@ describe("EnvironmentEngine", () => {
 
   it("deletes expired environments and leaves active ones alone", async () => {
     const { engine, repository, provider } = setup();
-    const expired = await engine.create("pr:123", { ttlMinutes: 30, dryRun: false, provider: "exedev" });
+    const expired = await engine.create("pr:123", { ttlMinutes: 30, dryRun: false, provider: "local" });
     if ("resources" in expired) throw new Error("Expected an environment");
     expired.expiresAt = "2026-08-18T12:00:00.000Z";
     await repository.save(expired);
@@ -233,7 +231,7 @@ describe("EnvironmentEngine", () => {
   it("can delete a failed record when no provider resource was created", async () => {
     const { engine, provider, repository } = setup();
     provider.createFailure = new Error("Environment allocation failed");
-    await expect(engine.create("pr:123", { ttlMinutes: 30, dryRun: false, provider: "exedev" })).rejects.toThrow();
+    await expect(engine.create("pr:123", { ttlMinutes: 30, dryRun: false, provider: "local" })).rejects.toThrow();
     const [failed] = await repository.list();
     if (!failed) throw new Error("Expected failed record");
 

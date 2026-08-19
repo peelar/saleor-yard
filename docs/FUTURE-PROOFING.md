@@ -14,10 +14,10 @@ Source selectors are resolved to full commits before a provider allocates an
 environment. Stored jobs therefore remain understandable after a branch or pull
 request changes.
 
-Lima and exe.dev live behind one provider interface. Adding Lima exposed two
-bad assumptions in the first design: shared records named only exe.dev, and the
-guest accepted only exe.dev URLs. Both are now provider-neutral. What an agent
-means by create, status, logs, exec, HTTP, or destroy stays the same.
+Lima lives behind a provider interface even though it is currently the only
+implementation. What an agent means by create, status, logs, exec, HTTP, or
+destroy does not depend on Lima commands. A future hosted provider should fit
+behind the same boundary.
 
 ## What the private service must add
 
@@ -34,7 +34,7 @@ slice:
 - streaming logs with backpressure and cancellation.
 
 These belong around the engine. They should not be implemented as special
-cases inside the exe.dev adapter.
+cases inside a hosted provider adapter.
 
 ## Current seams to preserve
 
@@ -42,16 +42,15 @@ cases inside the exe.dev adapter.
 - The engine works with plain TypeScript objects and repository interfaces.
 - Each provider owns its resource, transport, and access details.
 - The environment owns Saleor setup and runtime operations through `yardd`.
-- Provider images and the Saleor Platform revision are versioned and pinned.
+- Guest artifacts and the Saleor Platform revision are versioned and pinned.
 
 ## Known first-version limits
 
 - Public GitHub sources only.
 - One fixed compatibility profile for the current Saleor line.
-- One exe.dev tunnel at a time because its tunnel ports are fixed. Local
-  environments receive separate forwarded ports.
+- Local environments receive separate forwarded ports.
 - No deployed control plane keeps the expiry worker running yet.
-- No environment-scoped browser token yet; local agents use SSH-backed commands
-  or a local tunnel.
+- No environment-scoped browser token yet; local agents use loopback access or
+  provider-backed commands.
 
 Those are explicit limits, not contracts other code should depend on.

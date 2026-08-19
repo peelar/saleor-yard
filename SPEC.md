@@ -53,8 +53,8 @@ isolation setup, or provider commands during normal use.
 
 ### Default resource profile
 
-The current local and exe.dev providers start with 2 CPUs, 4 GB of memory, and
-a 20 GB disk. This default profile supports a small catalog and simple queries.
+The local provider starts with 2 CPUs, 4 GB of memory, and a 20 GB disk. This
+default profile supports a small catalog and simple queries.
 It is not production sizing.
 
 The profile must still pass the complete readiness contract. If future Saleor
@@ -69,7 +69,7 @@ rather than changing one provider alone.
 - Production hosting or persistent customer data.
 - A web interface.
 - GitHub webhooks, PR comments, or automatic verification.
-- Hosted providers other than exe.dev.
+- Hosted providers.
 - Snapshot pools or cold-start optimization.
 - Installing or running a coding agent inside the environment.
 
@@ -150,8 +150,8 @@ Ready output contains the stable environment contract:
     "commit": "eaaf809e91802745618e8b5390afccc80812d4f9"
   },
   "access": {
-    "dashboard": "https://example.invalid/",
-    "graphql": "https://example.invalid/graphql/"
+    "dashboard": "http://127.0.0.1:18080/",
+    "graphql": "http://127.0.0.1:18080/graphql/"
   },
   "expiresAt": "2026-08-18T18:00:00Z"
 }
@@ -159,16 +159,14 @@ Ready output contains the stable environment contract:
 
 ### 5.3 Browse and make HTTP requests
 
-The normal environment has one private HTTPS gateway:
+The normal environment has one loopback-only HTTP gateway:
 
 - `/` serves Dashboard;
 - `/graphql/` reaches Saleor Core;
 - required media and API paths also reach Core.
 
-A browser-capable local agent gets a loopback URL for a local Lima VM. For an
-exe.dev VM it can use `saleor-yard tunnel`, or open the private URL when its browser
-has an exe.dev session. A command-line agent can make a request through the
-provider control channel without handling an HTTPS access token itself:
+A browser-capable local agent gets a loopback URL for a local Lima VM. A
+command-line agent can make a request through the provider control channel:
 
 ```bash
 saleor-yard http env_abc123 \
@@ -206,10 +204,11 @@ saleor-yard exec env_abc123 -- python manage.py check
 The result has an exit code, standard output, and standard error. An interactive
 SSH command may exist for humans, but it is not the main agent interface.
 
-### 5.6 Open an optional local tunnel
+### 5.6 Inspect local access
 
-The private HTTPS gateway covers normal use. A local tunnel is an escape hatch
-for raw service ports:
+Lima forwards the gateway and raw service ports to loopback when the environment
+starts. The `tunnel` command prints those existing URLs; it does not start a
+separate process:
 
 ```bash
 saleor-yard tunnel env_abc123
@@ -223,9 +222,7 @@ Expected local endpoints:
 - Mailpit: `http://localhost:18025/`
 - Jaeger: `http://localhost:16686/`
 
-Yard owns the SSH forwarding process and reports how to stop it. Local Lima
-environments forward separate loopback ports when they start, so this command
-only prints their existing URLs.
+Each local Lima environment receives its own group of forwarded ports.
 
 ### 5.7 Destroy
 
@@ -289,14 +286,7 @@ Allocating a provider resource or starting containers alone does not mean ready.
 - Environments are private by default.
 - Pull request code is untrusted.
 - Provider, GitHub, and cloud credentials are never copied into the environment.
-- Provider integrations count as credentials because they give the environment an
-  authenticated capability even when the underlying secret stays elsewhere.
-- The exe.dev provider refuses to create or provision a VM when an integration
-  is attached through `auto:all` or the new VM name. It does not add a shared VM
-  tag. Operators must not attach an integration while an environment is running.
 - Public sources are cloned without a GitHub token.
-- The exe.dev HTTPS URL uses exe.dev's private access control. Local CLI HTTP,
-  logs, and command execution use the developer's SSH identity.
 - Lima exposes services only on forwarded loopback ports. It copies no provider
   or GitHub credentials into the VM.
 - Short-lived environment-scoped access credentials are required before cloud
@@ -391,15 +381,12 @@ or the guest runtime.
 
 See `docs/ARCHITECTURE.md` for the implementation design.
 
-## 12. First Providers
+## 12. Current Provider
 
-The hosted provider is exe.dev because it offers full VMs, root access,
-persistent disks, private HTTPS, custom images, and machine-readable commands.
-
-The local provider is Lima because it offers real Linux VMs, native macOS
+The current provider is Lima because it offers real Linux VMs, native macOS
 virtualization, non-interactive commands, and port forwarding.
 
-Both are practical choices, not part of the product promise. Every provider
+It is a practical choice, not part of the product promise. A future provider
 must implement the same small adapter contract.
 
 ## 13. Failure Experience
