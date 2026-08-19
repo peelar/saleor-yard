@@ -1,7 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { EnvironmentRecord } from "../src/domain/types.js";
 import type { CommandRunner, RunCommandOptions } from "../src/process/command-runner.js";
-import { LocalProvider } from "../src/providers/local/local-provider.js";
+import { findProjectRoot, LocalProvider } from "../src/providers/local/local-provider.js";
 
 interface QueuedResult { exitCode: number; stdout: string; stderr: string }
 
@@ -57,6 +60,21 @@ function provisionedRecord(): EnvironmentRecord {
 }
 
 describe("LocalProvider", () => {
+  // The provider refuses to create without real repository marker files, so
+  // tests that reach create() need a fixture root instead of a fake path.
+  let fakeRoot: string;
+
+  beforeAll(async () => {
+    fakeRoot = await mkdtemp(join(tmpdir(), "saleor-yard-project-"));
+    await mkdir(join(fakeRoot, "images", "local"), { recursive: true });
+    await writeFile(join(fakeRoot, "images", "yardd.service"), "");
+    await writeFile(join(fakeRoot, "images", "local", "Dockerfile"), "");
+  });
+
+  afterAll(async () => {
+    await rm(fakeRoot, { recursive: true, force: true });
+  });
+
   it("creates a Lima VM, installs yardd, and submits the same structured job", async () => {
     const runner = new FakeRunner([
       success(), success(), success(), success(), success(), success(), success(), success(),
@@ -66,7 +84,7 @@ describe("LocalProvider", () => {
     const provider = new LocalProvider(runner, {
       ports,
       yarddBinary: "/artifacts/yardd",
-      projectRoot: "/project",
+      projectRoot: fakeRoot,
     });
 
     const result = await provider.create(record());
@@ -200,7 +218,7 @@ describe("LocalProvider", () => {
       stdout: "",
       stderr: "failed to connect to unix:///Users/test/.orbstack/run/docker.sock: no such file or directory",
     }]);
-    const provider = new LocalProvider(runner, { ports, projectRoot: "/project" });
+    const provider = new LocalProvider(runner, { ports, projectRoot: fakeRoot });
 
     await expect(provider.create(record())).rejects.toMatchObject({
       code: "docker_unavailable",
@@ -241,5 +259,59 @@ describe("LocalProvider", () => {
     await expect(provider.create(record(), controller.signal)).rejects.toThrow("aborted");
 
     expect(calls[1]?.args).toEqual(["delete", "--force", "sy-pr-123-abc123"]);
+  });
+
+  it("fails creation with a clear error when repository files are missing", async () => {
+    const empty = await mkdtemp(join(tmpdir(), "saleor-yard-missing-root-"));
+    try {
+      const runner = new FakeRunner([]);
+      const provider = new LocalProvider(runner, { ports, yarddBinary: "/artifacts/yardd", projectRoot: empty });
+
+      await expect(provider.create(record())).rejects.toMatchObject({ code: "project_files_missing" });
+
+      expect(runner.calls).toEqual([]);
+    } finally {
+      await rm(empty, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("findProjectRoot", () => {
+  it("walks up from the bundled CLI layout to the repository root", async () => {
+    // The installed layout: <root>/dist/cli.cjs with marker files at <root>/images.
+    const root = await mkdtemp(join(tmpdir(), "saleor-yard-root-"));
+    try {
+      await mkdir(join(root, "images", "local"), { recursive: true });
+      await mkdir(join(root, "dist"));
+      await writeFile(join(root, "images", "yardd.service"), "");
+      await writeFile(join(root, "images", "local", "Dockerfile"), "");
+
+      expect(findProjectRoot(join(root, "dist"))).toBe(root);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("walks up from deeper development layouts", async () => {
+    const root = await mkdtemp(join(tmpdir(), "saleor-yard-root-"));
+    try {
+      await mkdir(join(root, "images", "local"), { recursive: true });
+      await mkdir(join(root, "src", "providers", "local"), { recursive: true });
+      await writeFile(join(root, "images", "yardd.service"), "");
+      await writeFile(join(root, "images", "local", "Dockerfile"), "");
+
+      expect(findProjectRoot(join(root, "src", "providers", "local"))).toBe(root);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("returns undefined when no directory contains the repository markers", async () => {
+    const root = await mkdtemp(join(tmpdir(), "saleor-yard-root-"));
+    try {
+      expect(findProjectRoot(root)).toBeUndefined();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { mkdtemp, rm, statfs } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -70,6 +71,25 @@ function parseJson(output: string): unknown {
   }
 }
 
+// The CLI runs from layouts with different depths: src/providers/local in
+// development, dist/cli.cjs when bundled, node_modules/saleor-yard/dist when
+// installed from a package. A fixed "../../.." only fits one of them, so walk
+// up until the repository marker files appear.
+export function findProjectRoot(start: string): string | undefined {
+  let directory = start;
+  for (;;) {
+    if (
+      existsSync(join(directory, "images", "yardd.service"))
+      && existsSync(join(directory, "images", "local", "Dockerfile"))
+    ) {
+      return directory;
+    }
+    const parent = dirname(directory);
+    if (parent === directory) return undefined;
+    directory = parent;
+  }
+}
+
 function requireLocalEnvironment(record: EnvironmentRecord): LocalProviderEnvironment {
   const environment = record.providerEnvironment;
   if (!environment || environment.provider !== "local") {
@@ -101,7 +121,11 @@ export class LocalProvider implements EnvironmentProvider {
     this.memoryGb = options.memoryGb ?? defaultResourceProfile.memoryGb;
     this.diskGb = options.diskGb ?? defaultResourceProfile.diskGb;
     this.configuredPorts = options.ports;
-    this.projectRoot = options.projectRoot ?? resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+    const moduleDirectory = dirname(fileURLToPath(import.meta.url));
+    this.projectRoot = options.projectRoot
+      ?? process.env.SALEOR_YARD_PROJECT_ROOT
+      ?? findProjectRoot(moduleDirectory)
+      ?? resolve(moduleDirectory, "../../..");
     this.yarddBinary = options.yarddBinary ?? process.env.SALEOR_YARD_LOCAL_YARDD;
     this.freeDiskBytes = options.freeDiskBytes ?? (async () => {
       const stats = await statfs(tmpdir(), { bigint: true });
@@ -132,6 +156,7 @@ export class LocalProvider implements EnvironmentProvider {
   }
 
   async create(record: EnvironmentRecord, signal?: AbortSignal): Promise<{ environment: LocalProviderEnvironment; access: EnvironmentAccess }> {
+    this.requireProjectFiles();
     if (!this.yarddBinary) {
       await this.requireDockerBuilder(signal);
     }
@@ -294,6 +319,18 @@ export class LocalProvider implements EnvironmentProvider {
       }
     }
     return report;
+  }
+
+  private requireProjectFiles(): void {
+    if (
+      !existsSync(join(this.projectRoot, "images", "yardd.service"))
+      || !existsSync(join(this.projectRoot, "images", "local", "Dockerfile"))
+    ) {
+      throw new YardError(
+        "project_files_missing",
+        "Saleor Yard could not find its repository files (images/). Run it from a full checkout or set SALEOR_YARD_PROJECT_ROOT.",
+      );
+    }
   }
 
   private vmName(record: EnvironmentRecord): string {
