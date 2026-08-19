@@ -37,7 +37,7 @@ function record(): EnvironmentRecord {
     id: "env_20260818120000_abc123",
     provider: "exedev",
     state: "provisioning",
-    phase: "provisioning_vm",
+    phase: "allocating_environment",
     source: {
       requested: "pr:123",
       kind: "pull_request",
@@ -60,11 +60,13 @@ function record(): EnvironmentRecord {
 describe("ExeDevProvider", () => {
   it("creates a VM from the Sandbox image and sends a structured job to sandboxd", async () => {
     const runner = new FakeRunner([
+      success("[]"),
       success('{"vm_name":"sf-pr-123-abc123","ssh_dest":"sf-pr-123-abc123.exe.xyz","https_url":"https://sf-pr-123-abc123.exe.xyz"}'),
+      success("[]"),
       success(),
       success(),
       success('{"state":"requested","phase":"requested","updatedAt":"2026-08-18T12:00:00Z"}'),
-      success('{"state":"provisioning","phase":"provisioning_vm","updatedAt":"2026-08-18T12:00:01Z"}'),
+      success('{"state":"provisioning","phase":"allocating_environment","updatedAt":"2026-08-18T12:00:01Z"}'),
     ]);
     const provider = new ExeDevProvider(runner, { image: "ghcr.io/example/sandbox:v1" });
 
@@ -75,8 +77,12 @@ describe("ExeDevProvider", () => {
       privateUrl: "https://sf-pr-123-abc123.exe.xyz",
     });
     expect(result.access.graphql).toBe("https://sf-pr-123-abc123.exe.xyz/graphql/");
-    expect(runner.calls[0]?.args).toContain("--image=ghcr.io/example/sandbox:v1");
-    expect(runner.calls[0]?.args.some((argument) => argument.includes("setup-script"))).toBe(false);
+    expect(runner.calls[1]?.args).toContain("--image=ghcr.io/example/sandbox:v1");
+    expect(runner.calls[1]?.args).toContain("--cpu=2");
+    expect(runner.calls[1]?.args).toContain("--memory=4GB");
+    expect(runner.calls[1]?.args).toContain("--disk=20GB");
+    expect(runner.calls[1]?.args.some((argument) => argument.startsWith("--tag="))).toBe(false);
+    expect(runner.calls[1]?.args.some((argument) => argument.includes("setup-script"))).toBe(false);
     const provisionCall = runner.calls.at(-1);
     expect(provisionCall?.options?.input).toBeDefined();
     expect(JSON.parse(provisionCall?.options?.input ?? "{}")).toMatchObject({
@@ -86,6 +92,68 @@ describe("ExeDevProvider", () => {
       dashboardTag: "3.23",
     });
     expect(provisionCall?.options?.input).not.toContain("token");
+  });
+
+  it("reports automatic integrations as an unsafe provider configuration", async () => {
+    const runner = new FakeRunner([
+      success('{"email":"developer@example.com"}'),
+      success('[{"name":"github","type":"github","attachments":["auto:all"]}]'),
+    ]);
+
+    const report = await new ExeDevProvider(runner).doctor();
+
+    expect(report.ok).toBe(false);
+    expect(report.checks).toContainEqual(expect.objectContaining({
+      name: "exe.dev integration isolation",
+      ok: false,
+      message: expect.stringContaining("auto:all"),
+    }));
+  });
+
+  it("approves an account whose integrations cannot reach Sandbox VMs", async () => {
+    const runner = new FakeRunner([
+      success('{"email":"developer@example.com"}'),
+      success('[{"name":"staging","type":"http-proxy","attachments":["tag:staging"]}]'),
+    ]);
+
+    const report = await new ExeDevProvider(runner).doctor();
+
+    expect(report.ok).toBe(true);
+    expect(report.checks).toContainEqual({
+      name: "exe.dev integration isolation",
+      ok: true,
+      message: "No automatic integrations can reach Sandbox VMs.",
+    });
+  });
+
+  it("refuses to allocate a VM when an integration follows every VM", async () => {
+    const runner = new FakeRunner([
+      success('[{"name":"cloud","type":"http-proxy","attachments":["auto:all"]}]'),
+    ]);
+
+    await expect(new ExeDevProvider(runner).create(record())).rejects.toMatchObject({
+      code: "provider_trust_boundary_failed",
+    });
+
+    expect(runner.calls).toHaveLength(1);
+    expect(runner.calls[0]?.args).toContain("integrations");
+  });
+
+  it("deletes a new VM if a direct integration appears before provisioning", async () => {
+    const runner = new FakeRunner([
+      success("[]"),
+      success('{"vm_name":"sf-pr-123-abc123","ssh_dest":"sf-pr-123-abc123.exe.xyz","https_url":"https://sf-pr-123-abc123.exe.xyz"}'),
+      success('[{"name":"github","type":"github","attachments":["vm:sf-pr-123-abc123"]}]'),
+      success(),
+    ]);
+
+    await expect(new ExeDevProvider(runner).create(record())).rejects.toMatchObject({
+      code: "provider_trust_boundary_failed",
+    });
+
+    expect(runner.calls.at(-1)?.args).toEqual(expect.arrayContaining([
+      "exe.dev", "rm", "sf-pr-123-abc123", "--json",
+    ]));
   });
 
   it("sends command arguments as JSON instead of interpolating them into SSH", async () => {
@@ -132,7 +200,7 @@ describe("ExeDevProvider", () => {
     });
   });
 
-  it("treats the guest's empty initial state as VM provisioning", async () => {
+  it("treats the guest's empty initial state as environment allocation", async () => {
     const value = record();
     value.providerEnvironment = {
       provider: "exedev",
@@ -147,7 +215,7 @@ describe("ExeDevProvider", () => {
 
     await expect(new ExeDevProvider(runner).inspect(value)).resolves.toEqual({
       state: "provisioning",
-      phase: "provisioning_vm",
+      phase: "allocating_environment",
       updatedAt: "2026-08-18T12:01:00Z",
     });
   });

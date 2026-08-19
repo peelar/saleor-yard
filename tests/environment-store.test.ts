@@ -1,4 +1,4 @@
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -48,6 +48,19 @@ describe("EnvironmentStore", () => {
 
     await expect(store.get("../../secret")).rejects.toMatchObject({
       code: "invalid_environment_id",
+    });
+  });
+
+  it("reads records written with the old VM-specific phase", async () => {
+    const root = await mkdtemp(join(tmpdir(), "saleor-sandbox-store-"));
+    const value = record();
+    await writeFile(
+      join(root, `${value.id}.json`),
+      JSON.stringify({ ...value, phase: "provisioning_vm" }),
+    );
+
+    await expect(new EnvironmentStore(root).get(value.id)).resolves.toMatchObject({
+      phase: "allocating_environment",
     });
   });
 

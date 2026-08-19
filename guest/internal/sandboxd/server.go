@@ -105,7 +105,7 @@ func (s *Server) handleProvision(response http.ResponseWriter, request *http.Req
 		writeError(response, http.StatusConflict, err)
 		return
 	}
-	writeJSON(response, http.StatusAccepted, NewStatus("provisioning", "provisioning_vm", job.Commit, ""))
+	writeJSON(response, http.StatusAccepted, NewStatus("provisioning", "allocating_environment", job.Commit, ""))
 }
 
 func (s *Server) handleLogs(response http.ResponseWriter, request *http.Request) {

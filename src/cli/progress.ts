@@ -5,7 +5,7 @@ const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "
 const phaseDetails: Record<EnvironmentPhase, { label: string; percent: number }> = {
   requested: { label: "Queued", percent: 0 },
   resolving_source: { label: "Resolving source", percent: 0 },
-  provisioning_vm: { label: "Creating virtual machine", percent: 10 },
+  allocating_environment: { label: "Allocating environment", percent: 10 },
   building_core: { label: "Building Saleor Core", percent: 25 },
   migrating_database: { label: "Applying database migrations", percent: 60 },
   seeding_database: { label: "Loading sample data", percent: 75 },

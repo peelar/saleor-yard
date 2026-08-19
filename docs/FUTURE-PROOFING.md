@@ -10,8 +10,9 @@ The environment engine, source resolver, lifecycle, provider interface, and
 `sandboxd` guest runtime do not depend on Commander or a web framework. A
 future HTTP handler can call the same engine methods as the CLI.
 
-Source selectors are resolved to full commits before a VM starts. Stored jobs
-therefore remain understandable after a branch or pull request changes.
+Source selectors are resolved to full commits before a provider allocates an
+environment. Stored jobs therefore remain understandable after a branch or pull
+request changes.
 
 Lima and exe.dev live behind one provider interface. Adding Lima exposed two
 bad assumptions in the first design: shared records named only exe.dev, and the
@@ -26,8 +27,8 @@ slice:
 - a durable database instead of local JSON files;
 - authenticated owners and access checks;
 - a queue and workers so create returns quickly;
-- idempotency keys so retries do not create extra VMs;
-- a permanent expiry worker;
+- idempotency keys so retries do not create extra environments;
+- a process manager that keeps the existing expiry worker running;
 - quotas, audit events, and cost limits;
 - short-lived environment access links for cloud browsers;
 - streaming logs with backpressure and cancellation.
@@ -39,17 +40,17 @@ cases inside the exe.dev adapter.
 
 - The CLI only parses input and prints output.
 - The engine works with plain TypeScript objects and repository interfaces.
-- Each provider owns its VM, transport, and access details.
-- The VM owns Saleor setup and runtime operations through `sandboxd`.
-- The VM image and Saleor Platform revision are versioned and pinned.
+- Each provider owns its resource, transport, and access details.
+- The environment owns Saleor setup and runtime operations through `sandboxd`.
+- Provider images and the Saleor Platform revision are versioned and pinned.
 
 ## Known first-version limits
 
 - Public GitHub sources only.
 - One fixed compatibility profile for the current Saleor line.
-- One exe.dev tunnel at a time because its tunnel ports are fixed. Local VMs
-  receive separate forwarded ports.
-- No automatic hosted expiry worker yet.
+- One exe.dev tunnel at a time because its tunnel ports are fixed. Local
+  environments receive separate forwarded ports.
+- No deployed control plane keeps the expiry worker running yet.
 - No environment-scoped browser token yet; local agents use SSH-backed commands
   or a local tunnel.
 

@@ -25,7 +25,7 @@ function record(): EnvironmentRecord {
     id: "env_20260818120000_abc123",
     provider: "local",
     state: "provisioning",
-    phase: "provisioning_vm",
+    phase: "allocating_environment",
     source: {
       requested: "pr:123",
       kind: "pull_request",
@@ -61,7 +61,7 @@ describe("LocalProvider", () => {
     const runner = new FakeRunner([
       success(), success(), success(), success(), success(), success(), success(), success(),
       success('{"state":"requested","phase":"requested","updatedAt":"2026-08-18T12:00:00Z"}'),
-      success('{"state":"provisioning","phase":"provisioning_vm","updatedAt":"2026-08-18T12:00:01Z"}'),
+      success('{"state":"provisioning","phase":"allocating_environment","updatedAt":"2026-08-18T12:00:01Z"}'),
     ]);
     const provider = new LocalProvider(runner, {
       ports,
@@ -73,6 +73,9 @@ describe("LocalProvider", () => {
 
     expect(runner.calls[0]).toMatchObject({ command: "limactl" });
     expect(runner.calls[0]?.args).toContain("template:docker-rootful");
+    expect(runner.calls[0]?.args).toContain("--cpus=2");
+    expect(runner.calls[0]?.args).toContain("--memory=4");
+    expect(runner.calls[0]?.args).toContain("--disk=20");
     expect(runner.calls[0]?.args).toContain("--port-forward=28080:8080,static=true");
     expect(runner.calls[2]?.args).toEqual(["copy", "/artifacts/sandboxd", "sf-pr-123-abc123:/tmp/sandboxd"]);
     const provision = runner.calls.at(-1);

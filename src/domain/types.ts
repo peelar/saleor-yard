@@ -40,7 +40,7 @@ export type EnvironmentState = (typeof environmentStates)[number];
 export const environmentPhases = [
   "requested",
   "resolving_source",
-  "provisioning_vm",
+  "allocating_environment",
   "building_core",
   "migrating_database",
   "seeding_database",
@@ -129,7 +129,7 @@ export interface DoctorReport {
 export interface CreatePlan {
   environmentId: string;
   provider: ProviderName;
-  vmName: string;
+  resourceName: string;
   source: ResolvedSource;
   resources: {
     cpu: number;

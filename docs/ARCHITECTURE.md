@@ -6,9 +6,9 @@ This document explains how Saleor Sandbox is built. Product behavior belongs in
 ## One engine, two ways in
 
 ```text
-Local Codex --> CLI ---------+                              +--> Lima VM
+Local Codex --> CLI ---------+                              +--> Lima environment
                              +--> Environment engine --> Provider registry
-Cloud agent --> private API -+                              +--> exe.dev VM
+Cloud agent --> private API -+                              +--> exe.dev environment
 ```
 
 The CLI is not a temporary prototype that will later be thrown away. It calls
@@ -21,8 +21,8 @@ the same TypeScript engine that a future HTTP server will call.
 The source resolver accepts one explicit source selector. It asks GitHub for the
 current source information and converts it into an exact commit.
 
-No VM is created until resolution succeeds. The provider receives only
-validated clone information and an immutable commit.
+No provider resource is allocated until resolution succeeds. The provider
+receives only validated clone information and an immutable commit.
 
 ### Environment engine
 
@@ -37,7 +37,7 @@ The engine coordinates the work:
 
 It owns the environment state model. It does not know how Lima, exe.dev, SSH,
 or port forwarding commands are formatted. Records keep their provider name,
-so one CLI can safely manage local and remote VMs at the same time.
+so one CLI can safely manage local and remote environments at the same time.
 
 ### Provider adapter
 
@@ -67,7 +67,7 @@ building the local adapter exposed and removed those assumptions.
 ### Local state store
 
 The local CLI needs to remember the connection between a Sandbox environment ID
-and the provider VM ID. It stores small JSON records under
+and the provider resource ID. It stores small JSON records under
 `$SALEOR_SANDBOX_HOME`, or an operating-system-specific user data directory by
 default.
 
@@ -79,9 +79,10 @@ engine contract.
 
 ### Guest runtime
 
-Each VM contains a small service named `sandboxd`. It has a local structured API
-and a matching command-line client. The provider can ask it to provision,
-report status, stream logs, execute commands, and make local HTTP requests.
+Each current provider environment contains a small service named `sandboxd`. It
+has a local structured API and a matching command-line client. The provider can
+ask it to provision, report status, stream logs, execute commands, and make
+local HTTP requests.
 
 `sandboxd`:
 
@@ -96,11 +97,16 @@ report status, stream logs, execute commands, and make local HTTP requests.
 9. checks GraphQL and Dashboard readiness;
 10. records structured events and full logs.
 
+After the Core image is built, the guest removes unused Docker build cache. The
+cache is not useful in today's one-build disposable environment. The Saleor
+worker uses one process because this environment is meant for investigation,
+not production traffic.
+
 The guest runtime is a small static Go binary. It uses typed process arguments
 when it must call Git or Docker Compose. There are no generated shell commands
 and no large provisioning scripts.
 
-### VM image and local guest artifact
+### Provider image and local guest artifact
 
 The exe.dev VM starts from a versioned Sandbox image based on exeuntu. The image
 contains Docker, Compose, `sandboxd`, the systemd unit, and stable templates.
@@ -117,9 +123,9 @@ or guest contracts.
 
 ## HTTP access
 
-The VM runs one small reverse proxy in front of Dashboard and Core. exe.dev
-exposes it through private HTTPS. Lima exposes it on a loopback-only forwarded
-port.
+The environment runs one small reverse proxy in front of Dashboard and Core.
+exe.dev exposes it through private HTTPS. Lima exposes it on a loopback-only
+forwarded port.
 
 This gives browser-capable agents one URL and avoids teaching callers about
 container ports. Raw ports remain available through an optional SSH tunnel.
@@ -151,15 +157,24 @@ and idempotency; those fields are not pretended into the local model today.
 
 ### Expiry
 
-The engine owns expiry decisions through `pruneExpired`. The local CLI exposes
-that as `sandbox prune`. A deployed control plane must call the same operation
-from a permanent cleanup worker. A timestamp by itself does not delete a VM.
+The engine owns expiry decisions through `pruneExpired`. The CLI exposes a
+single check as `sandbox prune`. The reusable expiry worker calls the same
+engine operation continuously. A deployed control plane must supervise that
+worker. A timestamp by itself does not delete an environment.
 
 ## Security boundary
 
-Pull request code runs inside the created VM and must be treated as untrusted.
-The VM does not receive the credentials used to create it. Public GitHub sources
-are cloned without authentication.
+Pull request code runs inside the created environment and must be treated as
+untrusted. The environment does not receive the credentials used to create it.
+Public GitHub sources are cloned without authentication.
+
+An exe.dev integration is also a credential boundary. It can give a VM access
+to GitHub, a cloud provider, an HTTP service, or another paid capability without
+placing a token on disk. Before allocation, the exe.dev adapter rejects
+integrations attached to every VM. Sandbox does not add a shared VM tag, so
+tag-based integrations do not apply. It checks again after allocation and before
+provisioning so a direct VM attachment cannot reach untrusted source code. A
+dedicated provider account with no automatic integrations is the safest setup.
 
 The control side validates repository names, commit SHAs, VM names, service
 names, ports, and command input. Provider calls use argument arrays rather than
@@ -167,3 +182,5 @@ local shell interpolation.
 
 This is a development tool, but private-by-default access and credential
 separation are MVP requirements.
+
+See `docs/ISOLATION.md` for the decision about VMs and Dev Containers.

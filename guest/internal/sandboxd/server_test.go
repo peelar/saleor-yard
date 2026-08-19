@@ -190,7 +190,7 @@ func TestProvisionerRecordsAPlainFailure(t *testing.T) {
 			t.Fatal(err)
 		}
 		if status.State == "failed" {
-			if status.Phase != "provisioning_vm" {
+			if status.Phase != "allocating_environment" {
 				t.Fatalf("unexpected failure phase: %s", status.Phase)
 			}
 			if status.Error == "" {

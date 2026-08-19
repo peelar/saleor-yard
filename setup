@@ -56,12 +56,13 @@ if ! corepack pnpm sandbox --provider "$provider" doctor; then
       'Install and start Docker, then run ./setup again.' >&2
   else
     printf '%s\n' \
-      'Set up SSH access to exe.dev, then run ./setup exedev again.' >&2
+      'Resolve the failed exe.dev check above, then run ./setup exedev again.' \
+      'Remote sandboxes need an account with no automatic integrations.' >&2
   fi
   exit 1
 fi
 
-printf '\nSaleor Sandbox is ready. Try:\n'
+printf '\nSetup is complete. Try a dry run:\n'
 if [ "$provider" = "local" ]; then
   printf '%s\n' '  pnpm sandbox create pr:19668 --ttl 30m --dry-run --json'
 else

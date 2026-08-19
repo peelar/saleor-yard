@@ -17,11 +17,21 @@ func TestComposeOverrideUsesTheExactCoreAndDashboardVersions(t *testing.T) {
 		`PUBLIC_URL: "` + job.PrivateURL + `"`,
 		`API_URL: "/graphql/"`,
 		`APP_MOUNT_URI: "/"`,
+		`--concurrency=1`,
 		`"8080:80"`,
 	} {
 		if !strings.Contains(result, expected) {
 			t.Fatalf("compose override does not contain %q", expected)
 		}
+	}
+}
+
+func TestInvestigationWorkerUsesOneProcess(t *testing.T) {
+	t.Parallel()
+	result := composeOverride(validJob())
+	worker := result[strings.Index(result, "  worker:"):strings.Index(result, "  dashboard:")]
+	if !strings.Contains(worker, "--concurrency=1") {
+		t.Fatal("the investigation worker must use one process")
 	}
 }
 

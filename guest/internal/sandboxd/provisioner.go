@@ -48,18 +48,18 @@ func (p *Provisioner) Start(job Job) error {
 
 func (p *Provisioner) run(job Job) {
 	if err := os.MkdirAll(p.config.StateDir, 0o700); err != nil {
-		_ = p.store.Write(NewStatus("failed", "provisioning_vm", job.Commit, err.Error()))
+		_ = p.store.Write(NewStatus("failed", "allocating_environment", job.Commit, err.Error()))
 		return
 	}
 	logFile, err := os.OpenFile(p.config.ProvisionLogPath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
-		_ = p.store.Write(NewStatus("failed", "provisioning_vm", job.Commit, err.Error()))
+		_ = p.store.Write(NewStatus("failed", "allocating_environment", job.Commit, err.Error()))
 		return
 	}
 	defer logFile.Close()
 
 	ctx := context.Background()
-	phase := "provisioning_vm"
+	phase := "allocating_environment"
 	fail := func(cause error) {
 		message := fmt.Sprintf("Provisioning failed during %s. Read the provisioning log for details.", phase)
 		_, _ = fmt.Fprintf(logFile, "\nERROR: %v\n", cause)
@@ -76,7 +76,7 @@ func (p *Provisioner) run(job Job) {
 		return commandError
 	}
 
-	if err := setPhase("provisioning_vm"); err != nil {
+	if err := setPhase("allocating_environment"); err != nil {
 		fail(err)
 		return
 	}
@@ -152,6 +152,7 @@ func (p *Provisioner) run(job Job) {
 		fail(err)
 		return
 	}
+	pruneBuilderCache(ctx, p.config.CommandRunner, logFile)
 
 	if err := os.WriteFile(filepath.Join(p.config.PlatformDir(), "sandbox.nginx.conf"), []byte(nginxConfiguration(job)), 0o644); err != nil {
 		fail(err)
@@ -208,6 +209,13 @@ func (p *Provisioner) run(job Job) {
 
 	_, _ = fmt.Fprintf(logFile, "\nSaleor environment is ready.\n")
 	_ = p.store.Write(NewStatus("ready", "ready", job.Commit, ""))
+}
+
+func pruneBuilderCache(ctx context.Context, runner Runner, log io.Writer) {
+	_, _ = fmt.Fprintln(log, "$ docker builder prune --force")
+	if _, err := runner.Run(ctx, log, log, "docker", "builder", "prune", "--force"); err != nil {
+		_, _ = fmt.Fprintf(log, "WARNING: Docker build cache could not be removed: %v\n", err)
+	}
 }
 
 func (p *Provisioner) waitForPostgres(ctx context.Context, log io.Writer) error {

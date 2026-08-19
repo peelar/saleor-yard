@@ -24,12 +24,17 @@ const resolvedSourceSchema = z.object({
   versionLine: z.string().optional(),
 });
 
+const environmentPhaseSchema = z.preprocess(
+  (value) => value === "provisioning_vm" ? "allocating_environment" : value,
+  z.enum(environmentPhases),
+);
+
 const environmentRecordSchema = z.object({
   schemaVersion: z.literal(1),
   id: z.string(),
   provider: z.enum(providerNames),
   state: z.enum(environmentStates),
-  phase: z.enum(environmentPhases),
+  phase: environmentPhaseSchema,
   source: resolvedSourceSchema,
   providerEnvironment: z.discriminatedUnion("provider", [
     z.object({
@@ -63,7 +68,7 @@ const environmentRecordSchema = z.object({
     .optional(),
   failure: z
     .object({
-      phase: z.enum(environmentPhases),
+      phase: environmentPhaseSchema,
       message: z.string(),
     })
     .optional(),

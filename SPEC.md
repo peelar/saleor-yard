@@ -9,7 +9,8 @@ The first user is a local coding agent such as Codex. The same environment
 engine should later be deployable behind a private HTTP API for cloud agents.
 
 The product creates and controls **disposable Saleor environments**. It is not a
-VM manager. A VM is the first implementation detail and may change later.
+VM manager. Current providers use VMs, but a provider may use another safe
+isolation method later.
 
 ## 2. Product Promise
 
@@ -24,11 +25,11 @@ Agent
   |-- sandbox exec --> commands inside the environment
   `-- sandbox destroy
                          |
-                    Provider-owned VM
+                Provider-owned environment
 ```
 
-The agent should not need to understand Docker Compose, SSH port forwarding, VM
-setup, or provider commands during normal use.
+The agent should not need to understand Docker Compose, SSH port forwarding,
+isolation setup, or provider commands during normal use.
 
 ## 3. MVP Scope
 
@@ -93,7 +94,7 @@ environment from silently changing when a branch receives another commit.
 ### 5.1 Create and wait
 
 ```bash
-sandbox create pr:19668 --ttl 2h --wait --json
+sandbox create pr:19668 --ttl 2h --json
 ```
 
 The HTTP API will eventually express the same operation:
@@ -114,7 +115,8 @@ POST /v1/environments
 ```
 
 Creation is asynchronous. The API returns an environment ID immediately. The
-CLI may wait and show progress to feel synchronous. Interactive CLI progress
+CLI waits by default and shows progress to feel synchronous; `--no-wait` returns
+the provisioning record immediately. Interactive CLI progress
 shows a spinner, elapsed time, and a 0-100% lifecycle bar. The percentage moves
 only when Sandbox reaches a real lifecycle milestone; it is not a time estimate.
 When standard error is not interactive, Sandbox writes one line per milestone
@@ -173,12 +175,12 @@ Logs are part of the product, not an implementation escape hatch.
 sandbox logs env_abc123
 sandbox logs env_abc123 --service api
 sandbox logs env_abc123 --service worker --follow
-sandbox logs env_abc123 --phase provision
+sandbox logs env_abc123 --setup
 ```
 
-Provisioning logs cover VM preparation, cloning, image building, migrations,
-sample data, startup, and readiness checks. Service logs come from the running
-Saleor stack.
+Provisioning logs cover environment preparation, cloning, image building,
+migrations, sample data, startup, and readiness checks. Service logs come from
+the running Saleor stack.
 
 If creation fails, status includes the failed phase and a short error. The
 relevant logs remain available until the environment is destroyed or expires.
@@ -212,8 +214,8 @@ Expected local endpoints:
 - Jaeger: `http://localhost:16686/`
 
 Sandbox owns the SSH forwarding process and reports how to stop it. Local Lima
-VMs forward separate loopback ports when they start, so this command only
-prints their existing URLs.
+environments forward separate loopback ports when they start, so this command
+only prints their existing URLs.
 
 ### 5.7 Destroy
 
@@ -221,9 +223,10 @@ prints their existing URLs.
 sandbox destroy env_abc123
 ```
 
-Explicit destroy should be idempotent. `sandbox prune` deletes expired VMs known
-to the local CLI. A deployed control plane must run this cleanup permanently;
-recording a TTL alone does not delete a VM.
+Explicit destroy should be idempotent. `sandbox prune` deletes expired
+environments known to the local CLI. `sandbox expiry-worker` runs the same
+cleanup continuously. A deployed control plane must keep that worker running;
+recording a TTL alone does not delete an environment.
 
 ## 6. Lifecycle
 
@@ -232,7 +235,7 @@ requested
     |
 resolving_source
     |
-provisioning_vm
+allocating_environment
     |
 building_core
     |
@@ -269,13 +272,18 @@ An environment is `ready` only when:
 7. Dashboard responds through the private gateway.
 8. Logs and remote command execution work.
 
-VM creation or running containers alone do not mean ready.
+Allocating a provider resource or starting containers alone does not mean ready.
 
 ## 8. Access and Security
 
 - Environments are private by default.
 - Pull request code is untrusted.
-- Provider, GitHub, and cloud credentials are never copied into the VM.
+- Provider, GitHub, and cloud credentials are never copied into the environment.
+- Provider integrations count as credentials because they give the environment an
+  authenticated capability even when the underlying secret stays elsewhere.
+- The exe.dev provider refuses to create or provision a VM when an integration
+  is attached through `auto:all` or the new VM name. It does not add a shared VM
+  tag. Operators must not attach an integration while an environment is running.
 - Public sources are cloned without a GitHub token.
 - The exe.dev HTTPS URL uses exe.dev's private access control. Local CLI HTTP,
   logs, and command execution use the developer's SSH identity.
@@ -283,11 +291,11 @@ VM creation or running containers alone do not mean ready.
   or GitHub credentials into the VM.
 - Short-lived environment-scoped access credentials are required before cloud
   agents can receive browser access; they do not exist in the local MVP.
-- The created VM cannot create, resize, or delete other environments.
+- The created environment cannot create, resize, or delete other environments.
 - Inputs used in provider commands are validated and never interpolated into a
   shell command without safe quoting.
 - No production Saleor secrets or customer data are used.
-- Destruction removes the VM and its development data.
+- Destruction removes the provider resource and its development data.
 
 For the local CLI, provider credentials stay on the developer machine. For the
 future private service, provider credentials stay in the control plane.
@@ -297,6 +305,8 @@ future private service, provider credentials stay in the control plane.
 The CLI is designed for agents first:
 
 - no prompts in normal commands;
+- `create` waits for a ready environment by default; `--no-wait` opts into the
+  asynchronous form;
 - the local provider is used when no provider is selected;
 - stable exit codes;
 - `--json` on every command that returns data;
@@ -317,6 +327,7 @@ sandbox exec <environment> -- <command>
 sandbox http <environment> <method> <path>
 sandbox tunnel <environment>
 sandbox prune
+sandbox expiry-worker
 sandbox destroy <environment>
 sandbox doctor
 ```
@@ -350,19 +361,19 @@ into the provider adapter or change the environment contract.
 
 ## 11. Architecture Boundaries
 
-The implementation has four main parts:
+The implementation has five main parts:
 
 1. **Source resolver** converts the public source selector into an immutable
    GitHub commit and safe clone information.
 2. **Environment engine** owns lifecycle rules, state, expiry, and the stable
    contract used by both transports.
-3. **Provider adapter** creates the VM, talks to the guest runtime, provides
-   access, and destroys the VM.
+3. **Provider adapter** allocates the environment, talks to the guest runtime,
+   provides access, and destroys the provider resource.
 4. **Transport** turns CLI or HTTP input into engine calls and formats results.
 
-5. **Guest runtime (`sandboxd`)** runs inside the VM. It owns Saleor setup,
-   readiness, service logs, and command execution through a small structured
-   API.
+5. **Guest runtime (`sandboxd`)** runs inside the environment. It owns Saleor
+   setup, readiness, service logs, and command execution through a small
+   structured API.
 
 Saleor services belong in versioned Compose templates. Provider-specific
 commands do not belong in source resolution, CLI formatting, lifecycle rules,
@@ -402,8 +413,8 @@ Good:
 
 ```text
 env_abc123 failed while migrating_database.
-The VM is still available until 18:00 UTC.
-Run: sandbox logs env_abc123 --phase provision
+The environment is still available until 18:00 UTC.
+Run: sandbox logs env_abc123 --setup
 Destroy it with: sandbox destroy env_abc123
 ```
 
@@ -420,7 +431,7 @@ The first milestone is complete when a local agent can:
 7. perform the entire workflow using stable JSON output.
 
 Local unit tests and mocked provider tests are necessary, but they do not prove
-this milestone. At least one real VM must complete the workflow.
+this milestone. At least one real environment must complete the workflow.
 
 ## 15. Later Work
 

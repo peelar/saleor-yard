@@ -30,7 +30,7 @@ describe("GitHubSourceResolver", () => {
     );
   });
 
-  it("resolves a public fork pull request without passing credentials to the VM", async () => {
+  it("resolves a public fork pull request without passing credentials to the environment", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
       jsonResponse({
         number: 123,

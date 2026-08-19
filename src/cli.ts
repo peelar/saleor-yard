@@ -12,6 +12,7 @@ import type {
   PruneReport,
 } from "./domain/types.js";
 import { EnvironmentEngine } from "./engine/environment-engine.js";
+import { runExpiryWorker } from "./engine/expiry-worker.js";
 import { CliProgress } from "./cli/progress.js";
 import { SpawnCommandRunner } from "./process/command-runner.js";
 import { ExeDevProvider } from "./providers/exedev/exedev-provider.js";
@@ -31,7 +32,7 @@ function createEngine(): EnvironmentEngine {
 
 function parseProvider(value: string): ProviderName {
   if (value !== "exedev" && value !== "local") {
-    throw new SandboxError("invalid_provider", "Provider must be exedev or local.");
+    throw new SandboxError("invalid_provider", `Unknown provider "${value}". Choose local or exedev.`);
   }
   return value;
 }
@@ -77,13 +78,25 @@ function printEnvironment(record: EnvironmentRecord): void {
   }
   if (record.failure) {
     process.stdout.write(`Failure: ${record.failure.message}\n`);
+    process.stdout.write(`Read setup logs: sandbox logs ${record.id} --setup\n`);
+    process.stdout.write(`Delete it: sandbox destroy ${record.id}\n`);
   }
+}
+
+function printFailureGuidance(details: unknown): void {
+  if (!details || typeof details !== "object") return;
+  const value = details as { environmentId?: unknown; expiresAt?: unknown };
+  if (typeof value.environmentId !== "string") return;
+  process.stderr.write(`Environment: ${value.environmentId}\n`);
+  if (typeof value.expiresAt === "string") process.stderr.write(`Expires: ${value.expiresAt}\n`);
+  process.stderr.write(`Read setup logs: sandbox logs ${value.environmentId} --setup\n`);
+  process.stderr.write(`Delete it: sandbox destroy ${value.environmentId}\n`);
 }
 
 function printPlan(plan: CreatePlan): void {
   process.stdout.write(`Dry run for ${plan.source.requested}\n`);
   process.stdout.write(`Resolved commit: ${plan.source.commit}\n`);
-  process.stdout.write(`VM: ${plan.vmName}\n`);
+  process.stdout.write(`Resource: ${plan.resourceName}\n`);
   process.stdout.write(
     `Resources: ${plan.resources.cpu} CPU, ${plan.resources.memoryGb} GB memory, ${plan.resources.diskGb} GB disk\n`,
   );
@@ -115,19 +128,30 @@ function printPruneReport(report: PruneReport): void {
 const engine = createEngine();
 const config = loadConfig();
 const program = new Command();
+const argumentSeparator = process.argv.indexOf("--");
+const cliArguments = argumentSeparator === -1 ? process.argv : process.argv.slice(0, argumentSeparator);
+const jsonRequested = cliArguments.includes("--json") && !cliArguments.includes("--help") && !cliArguments.includes("--version");
 
 program
   .name("sandbox")
   .description("Create disposable Saleor environments for coding agents.")
   .version("0.0.1")
-  .option("--provider <name>", "VM provider: exedev or local", config.defaultProvider)
+  .option("--provider <name>", "environment provider: exedev or local", config.defaultProvider)
   .option("--no-progress", "disable progress output")
+  .configureOutput({
+    writeErr: (message) => {
+      if (!jsonRequested) process.stderr.write(message);
+    },
+    writeOut: (message) => {
+      if (!jsonRequested) process.stdout.write(message);
+    },
+  })
   .showHelpAfterError()
   .exitOverride();
 
 program
   .command("doctor")
-  .description("Check whether the selected VM provider is usable.")
+  .description("Check whether the selected environment provider is usable.")
   .option("--json", "write machine-readable JSON")
   .action(async (options: { json?: boolean }) => {
     const report = await engine.doctor(parseProvider(program.opts<{ provider: string }>().provider));
@@ -142,16 +166,17 @@ program
   .description("Create a Saleor environment from one public source.")
   .argument("<source>", "release:, branch:, commit:, or pr: selector")
   .option("--ttl <duration>", "environment lifetime", "2h")
-  .option("--wait", "wait until the environment is ready")
+  .option("--wait", "wait until the environment is ready", true)
+  .option("--no-wait", "return while the environment is still provisioning")
   .option("--wait-timeout <minutes>", "maximum wait time", "30")
-  .option("--dry-run", "resolve and show the plan without creating a VM")
+  .option("--dry-run", "resolve and show the plan without creating an environment")
   .option("--json", "write machine-readable JSON")
   .action(
     async (
       source: string,
       options: {
         ttl: string;
-        wait?: boolean;
+        wait: boolean;
         waitTimeout: string;
         dryRun?: boolean;
         json?: boolean;
@@ -203,8 +228,8 @@ program
 
 program
   .command("list")
-  .description("List locally known environments.")
-  .option("--refresh", "refresh each environment from its VM provider")
+  .description("List saved environments.")
+  .option("--refresh", "refresh each environment from its provider")
   .option("--json", "write machine-readable JSON")
   .action(async (options: { refresh?: boolean; json?: boolean }) => {
     const records = await engine.list(options.refresh ?? false);
@@ -218,7 +243,7 @@ program
     }
     for (const record of records) {
       process.stdout.write(
-        `${record.id}  ${record.state.padEnd(12)}  ${record.source.requested.padEnd(20)}  ${record.expiresAt}\n`,
+        `${record.id}  ${record.provider.padEnd(7)}  ${record.state.padEnd(12)}  ${record.source.requested.padEnd(20)}  ${record.expiresAt}\n`,
       );
     }
   });
@@ -270,27 +295,28 @@ program
   .description("Read provisioning or Saleor service logs.")
   .argument("<environment>")
   .option("--service <name>", "api, worker, db, cache, dashboard, gateway, mailpit, or jaeger")
-  .option("--phase <name>", "use provision for VM setup logs")
+  .option("--setup", "read environment setup logs")
+  .option("--phase <name>", "deprecated alias for --setup")
   .option("--tail <lines>", "number of existing lines", "200")
   .option("--follow", "follow new lines")
-  .option("--json", "write a structured command result")
+  .option("--json", "write machine-readable JSON")
   .action(
     async (
       id: string,
-      options: { service?: string; phase?: string; tail: string; follow?: boolean; json?: boolean },
+      options: { service?: string; setup?: boolean; phase?: string; tail: string; follow?: boolean; json?: boolean },
     ) => {
-      if (options.service && options.phase) {
-        throw new SandboxError("invalid_log_target", "Choose either --service or --phase, not both.");
+      if (options.service && (options.phase || options.setup)) {
+        throw new SandboxError("invalid_log_target", "Choose either --service or --setup, not both.");
       }
       if (options.phase && options.phase !== "provision") {
-        throw new SandboxError("invalid_log_target", "The only setup log phase is provision.");
+        throw new SandboxError("invalid_log_target", "Use --setup for environment setup logs.");
       }
       if (options.follow && options.json) {
         throw new SandboxError("invalid_output", "Following logs cannot be returned as one JSON value.");
       }
       const result = await engine.logs(id, {
         ...(options.service ? { service: options.service } : {}),
-        ...(options.phase === "provision" ? { phase: "provision" as const } : {}),
+        ...((options.setup || options.phase === "provision") ? { phase: "provision" as const } : {}),
         follow: options.follow ?? false,
         tail: parsePositiveInteger(options.tail, "Tail"),
       });
@@ -307,7 +333,7 @@ program
   .command("exec")
   .description("Run a non-interactive command inside the Saleor API service.")
   .argument("<environment>")
-  .argument("<command...>")
+  .argument("<command...>", "command and arguments; put -- before command options")
   .option("--json", "write machine-readable JSON")
   .action(async (id: string, command: string[], options: { json?: boolean }) => {
     const result = await engine.exec(id, command);
@@ -358,22 +384,29 @@ program
   .command("tunnel")
   .description("Open local ports for direct Saleor service access.")
   .argument("<environment>")
-  .action(async (id: string) => {
+  .option("--json", "write machine-readable JSON")
+  .action(async (id: string, options: { json?: boolean }) => {
     const record = await engine.get(id, false);
     const access = record.access;
-    process.stderr.write(
-      [
-        record.provider === "local" ? "Local VM access:" : "Tunnel open until this command stops:",
-        `  Dashboard: ${access?.dashboard ?? "http://localhost:18080/"}`,
-        `  GraphQL:  ${access?.graphql ?? "http://localhost:18080/graphql/"}`,
-        `  Raw Core: ${access?.rawGraphql ?? "http://localhost:18000/graphql/"}`,
-        `  Mailpit:   ${access?.mailpit ?? "http://localhost:18025/"}`,
-        `  Jaeger:    ${access?.jaeger ?? "http://localhost:16686/"}`,
-        "",
-      ].join("\n"),
-    );
+    if (options.json) {
+      writeJson({ environmentId: id, access });
+    } else {
+      process.stderr.write(
+        [
+          record.provider === "local" ? "Local environment access:" : "Tunnel open until this command stops:",
+          `  Dashboard: ${access?.dashboard ?? "http://localhost:18080/"}`,
+          `  GraphQL:  ${access?.graphql ?? "http://localhost:18080/graphql/"}`,
+          `  Raw Core: ${access?.rawGraphql ?? "http://localhost:18000/graphql/"}`,
+          `  Mailpit:   ${access?.mailpit ?? "http://localhost:18025/"}`,
+          `  Jaeger:    ${access?.jaeger ?? "http://localhost:16686/"}`,
+          "",
+        ].join("\n"),
+      );
+    }
     const result = await engine.tunnel(id);
-    if (result.stdout) process.stdout.write(result.stdout);
+    if (result.stdout) {
+      (options.json ? process.stderr : process.stdout).write(result.stdout);
+    }
     if (result.exitCode !== 0) {
       process.stderr.write(result.stderr);
       process.exitCode = result.exitCode;
@@ -393,8 +426,52 @@ program
   });
 
 program
+  .command("expiry-worker")
+  .description("Continuously delete environments after their lifetime expires.")
+  .option("--interval <duration>", "time between expiry checks", "1m")
+  .option("--json", "write one JSON object per check")
+  .action(async (options: { interval: string; json?: boolean }) => {
+    const intervalMinutes = parseDuration(options.interval);
+    if (intervalMinutes < 1) {
+      throw new SandboxError("invalid_duration", "Expiry checks must be at least one minute apart.");
+    }
+
+    const controller = new AbortController();
+    const stop = () => controller.abort();
+    process.once("SIGINT", stop);
+    process.once("SIGTERM", stop);
+    process.stderr.write(`Expiry worker started. Checking every ${options.interval}.\n`);
+    try {
+      await runExpiryWorker(engine, {
+        intervalMs: intervalMinutes * 60_000,
+        signal: controller.signal,
+        onReport: (report) => {
+          if (options.json) {
+            process.stdout.write(`${JSON.stringify(report)}\n`);
+            return;
+          }
+          process.stderr.write(
+            `[${report.checkedAt}] Deleted ${report.deleted.length} expired environment(s); ${report.failures.length} failed.\n`,
+          );
+          for (const failure of report.failures) {
+            process.stderr.write(`${failure.environmentId}: ${failure.message}\n`);
+          }
+        },
+        onError: (error) => {
+          const failure = toSandboxError(error);
+          process.stderr.write(`Expiry check failed: ${failure.message}\n`);
+        },
+      });
+    } finally {
+      process.off("SIGINT", stop);
+      process.off("SIGTERM", stop);
+      process.stderr.write("Expiry worker stopped.\n");
+    }
+  });
+
+program
   .command("destroy")
-  .description("Delete an environment and its VM.")
+  .description("Delete an environment and its provider resource.")
   .argument("<environment>")
   .option("--json", "write machine-readable JSON")
   .action(async (id: string, options: { json?: boolean }) => {
@@ -402,14 +479,20 @@ program
     options.json ? writeJson(record) : printEnvironment(record);
   });
 
-const jsonRequested = process.argv.includes("--json");
-
 try {
   await program.parseAsync(process.argv);
 } catch (error) {
   if (error instanceof CommanderError) {
     if (error.code === "commander.helpDisplayed" || error.code === "commander.version") {
       process.exitCode = 0;
+    } else if (jsonRequested) {
+      writeJson({
+        error: {
+          code: error.code,
+          message: error.message,
+        },
+      });
+      process.exitCode = error.exitCode;
     } else {
       process.exitCode = error.exitCode;
     }
@@ -419,6 +502,7 @@ try {
       writeJson({ error: { code: failure.code, message: failure.message, details: failure.details } });
     } else {
       process.stderr.write(`Error: ${failure.message}\n`);
+      printFailureGuidance(failure.details);
     }
     process.exitCode = 1;
   }

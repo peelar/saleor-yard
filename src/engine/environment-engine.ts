@@ -43,7 +43,7 @@ export class EnvironmentEngine {
     onUpdate?: (record: EnvironmentRecord) => void,
   ): Promise<EnvironmentRecord | CreatePlan> {
     if (!Number.isInteger(options.ttlMinutes) || options.ttlMinutes < 15 || options.ttlMinutes > 24 * 60) {
-      throw new SandboxError("invalid_ttl", "TTL must be between 15 minutes and 24 hours.");
+      throw new SandboxError("invalid_ttl", "Lifetime must be between 15 minutes and 24 hours.");
     }
 
     const source = await this.resolver.resolve(parseSourceSelector(sourceInput));
@@ -66,7 +66,7 @@ export class EnvironmentEngine {
 
     await this.store.save(record);
     record.state = "provisioning";
-    record.phase = "provisioning_vm";
+    record.phase = "allocating_environment";
     record.updatedAt = new Date().toISOString();
     await this.store.save(record);
     onUpdate?.(record);
@@ -78,16 +78,23 @@ export class EnvironmentEngine {
       await this.store.save(record);
       return record;
     } catch (error) {
+      const failure = error instanceof SandboxError
+        ? error
+        : new SandboxError("environment_create_failed", error instanceof Error ? error.message : "Environment allocation failed.");
       record.state = "failed";
       record.phase = "failed";
       record.failure = {
-        phase: "provisioning_vm",
-        message: error instanceof Error ? error.message : "VM provisioning failed.",
+        phase: "allocating_environment",
+        message: failure.message,
       };
       record.updatedAt = new Date().toISOString();
       await this.store.save(record);
       onUpdate?.(record);
-      throw error;
+      throw new SandboxError(failure.code, failure.message, {
+        ...(failure.details && typeof failure.details === "object" ? failure.details : {}),
+        environmentId: record.id,
+        expiresAt: record.expiresAt,
+      });
     }
   }
 
@@ -139,7 +146,9 @@ export class EnvironmentEngine {
       }
       await new Promise((resolve) => setTimeout(resolve, intervalMs));
     }
-    throw new SandboxError("wait_timeout", `Environment ${id} did not become ready in time.`);
+    throw new SandboxError("wait_timeout", `Environment ${id} did not become ready in time.`, {
+      environmentId: id,
+    });
   }
 
   async logs(id: string, options: LogOptions): Promise<CommandResult> {

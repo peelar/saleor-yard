@@ -43,6 +43,15 @@ func composeOverride(job Job) string {
       HTTP_IP_FILTER_ENABLED: "False"
   worker:
     image: saleor-sandbox-core:%s
+    command:
+      - celery
+      - -A
+      - saleor
+      - --app=saleor.celeryconf:app
+      - worker
+      - --loglevel=info
+      - --concurrency=1
+      - -B
   dashboard:
     image: ghcr.io/saleor/saleor-dashboard:%s
     environment:

@@ -15,6 +15,7 @@ import type {
 } from "../../domain/types.js";
 import type { CommandRunner } from "../../process/command-runner.js";
 import type { EnvironmentProvider } from "../environment-provider.js";
+import { investigationResources } from "../investigation-resources.js";
 
 const platformCommit = "ab6315bd59c58b4815175df4c679107ff9695be4";
 const defaultDashboardTag = "3.23";
@@ -23,20 +24,23 @@ const sshOptions = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=15"];
 
 const providerStatusSchema = z.object({
   state: z.enum(["requested", "provisioning", "ready", "failed", "deleting", "deleted"]),
-  phase: z.enum([
-    "requested",
-    "resolving_source",
-    "provisioning_vm",
-    "building_core",
-    "migrating_database",
-    "seeding_database",
-    "starting_services",
-    "checking_readiness",
-    "ready",
-    "deleting",
-    "deleted",
-    "failed",
-  ]),
+  phase: z.preprocess(
+    (value) => value === "provisioning_vm" ? "allocating_environment" : value,
+    z.enum([
+      "requested",
+      "resolving_source",
+      "allocating_environment",
+      "building_core",
+      "migrating_database",
+      "seeding_database",
+      "starting_services",
+      "checking_readiness",
+      "ready",
+      "deleting",
+      "deleted",
+      "failed",
+    ]),
+  ),
   updatedAt: z.string(),
   commit: z.string().regex(/^[a-f0-9]{40}$/).optional(),
   error: z.string().optional(),
@@ -53,6 +57,12 @@ const httpResponseSchema = z.object({
   headers: z.record(z.string(), z.array(z.string())),
   body: z.string(),
 });
+
+const integrationListSchema = z.array(
+  z.object({
+    attachments: z.array(z.string()),
+  }),
+);
 
 export interface ExeDevProviderOptions {
   cpu?: number;
@@ -132,9 +142,9 @@ export class ExeDevProvider implements EnvironmentProvider {
     private readonly runner: CommandRunner,
     options: ExeDevProviderOptions = {},
   ) {
-    this.cpu = options.cpu ?? 4;
-    this.memoryGb = options.memoryGb ?? 8;
-    this.diskGb = options.diskGb ?? 40;
+    this.cpu = options.cpu ?? investigationResources.cpu;
+    this.memoryGb = options.memoryGb ?? investigationResources.memoryGb;
+    this.diskGb = options.diskGb ?? investigationResources.diskGb;
     this.gatewayPort = options.gatewayPort ?? 8080;
     this.image = options.image ?? process.env.SALEOR_SANDBOX_EXEDEV_IMAGE ?? defaultImage;
   }
@@ -152,6 +162,7 @@ export class ExeDevProvider implements EnvironmentProvider {
       const result = parseJsonOutput(ssh.stdout) as Record<string, unknown>;
       const email = typeof result.email === "string" ? result.email : "authenticated user";
       checks.push({ name: "exe.dev authentication", ok: true, message: `Connected as ${email}.` });
+      checks.push(await this.integrationPolicyCheck());
     } else {
       checks.push({
         name: "exe.dev authentication",
@@ -167,7 +178,7 @@ export class ExeDevProvider implements EnvironmentProvider {
     return {
       environmentId: record.id,
       provider: "exedev",
-      vmName: this.vmName(record),
+      resourceName: this.vmName(record),
       source: record.source,
       resources: { cpu: this.cpu, memoryGb: this.memoryGb, diskGb: this.diskGb },
       privateGatewayPort: this.gatewayPort,
@@ -179,20 +190,20 @@ export class ExeDevProvider implements EnvironmentProvider {
     environment: ExeDevProviderEnvironment;
     access: EnvironmentAccess;
   }> {
+    await this.assertCleanIntegrationPolicy();
     const plan = this.plan(record);
-    const privateUrl = `https://${plan.vmName}.exe.xyz`;
+    const privateUrl = `https://${plan.resourceName}.exe.xyz`;
     const dashboardTag = record.source.versionLine ?? defaultDashboardTag;
 
     const args = [
       ...sshOptions,
       "exe.dev",
       "new",
-      `--name=${plan.vmName}`,
+      `--name=${plan.resourceName}`,
       `--cpu=${this.cpu}`,
       `--memory=${this.memoryGb}GB`,
       `--disk=${this.diskGb}GB`,
       `--image=${this.image}`,
-      "--tag=saleor-sandbox",
       `--comment=${record.source.requested} at ${record.source.commit.slice(0, 12)}`,
       "--no-email",
       "--json",
@@ -207,11 +218,12 @@ export class ExeDevProvider implements EnvironmentProvider {
     }
 
     const response = parseJsonOutput(creation.stdout);
-    const name = findString(response, ["vm_name", "name"]) ?? plan.vmName;
+    const name = findString(response, ["vm_name", "name"]) ?? plan.resourceName;
     const sshDestination = findString(response, ["ssh_dest", "ssh_destination"]) ?? `${name}.exe.xyz`;
     const returnedUrl = findString(response, ["https_url", "url"]) ?? `https://${name}.exe.xyz`;
 
     try {
+      await this.assertCleanIntegrationPolicy(name);
       await this.configurePrivateGateway(name);
       await this.waitForSandboxd(sshDestination);
       const job = JSON.stringify({
@@ -275,7 +287,7 @@ export class ExeDevProvider implements EnvironmentProvider {
     if (result.exitCode !== 0) {
       return {
         state: "provisioning",
-        phase: "provisioning_vm",
+        phase: "allocating_environment",
         updatedAt: new Date().toISOString(),
       };
     }
@@ -289,7 +301,7 @@ export class ExeDevProvider implements EnvironmentProvider {
     if (parsed.state === "requested") {
       return {
         state: "provisioning",
-        phase: "provisioning_vm",
+        phase: "allocating_environment",
         updatedAt: parsed.updatedAt,
       };
     }
@@ -432,6 +444,77 @@ export class ExeDevProvider implements EnvironmentProvider {
         privacy.stderr.trim() || "exe.dev could not make the gateway private.",
       );
     }
+  }
+
+  private async integrationPolicyCheck(vmName?: string): Promise<DoctorCheck> {
+    try {
+      const blockedAttachments = await this.blockedIntegrationAttachments(vmName);
+      if (blockedAttachments.length === 0) {
+        return {
+          name: "exe.dev integration isolation",
+          ok: true,
+          message: "No automatic integrations can reach Sandbox VMs.",
+        };
+      }
+      return {
+        name: "exe.dev integration isolation",
+        ok: false,
+        message: this.integrationPolicyMessage(blockedAttachments),
+      };
+    } catch (error) {
+      return {
+        name: "exe.dev integration isolation",
+        ok: false,
+        message: error instanceof Error
+          ? `Could not verify exe.dev integrations: ${error.message}`
+          : "Could not verify exe.dev integrations.",
+      };
+    }
+  }
+
+  private async assertCleanIntegrationPolicy(vmName?: string): Promise<void> {
+    const blockedAttachments = await this.blockedIntegrationAttachments(vmName);
+    if (blockedAttachments.length > 0) {
+      throw new SandboxError(
+        "provider_trust_boundary_failed",
+        this.integrationPolicyMessage(blockedAttachments),
+      );
+    }
+  }
+
+  private async blockedIntegrationAttachments(vmName?: string): Promise<string[]> {
+    const result = await this.runner.run(
+      "ssh",
+      [...sshOptions, "exe.dev", "integrations", "list", "--json"],
+      { timeoutMs: 20_000 },
+    );
+    if (result.exitCode !== 0) {
+      throw new SandboxError(
+        "provider_trust_boundary_check_failed",
+        result.stderr.trim() || "exe.dev integrations could not be inspected.",
+      );
+    }
+
+    const integrations = integrationListSchema.parse(parseJsonOutput(result.stdout));
+    const blockedScopes = new Set([
+      "auto:all",
+      ...(vmName ? [`vm:${vmName}`] : []),
+    ]);
+    return [
+      ...new Set(
+        integrations.flatMap(({ attachments }) =>
+          attachments.filter((attachment) => blockedScopes.has(attachment)),
+        ),
+      ),
+    ].sort();
+  }
+
+  private integrationPolicyMessage(blockedAttachments: string[]): string {
+    return [
+      `exe.dev integrations are attached through ${blockedAttachments.join(", ")}.`,
+      "Untrusted pull request code must not receive provider integrations.",
+      "Use a dedicated exe.dev account with no automatic integrations, or remove those attachment rules before creating an environment.",
+    ].join(" ");
   }
 
   private async waitForSandboxd(sshDestination: string): Promise<void> {

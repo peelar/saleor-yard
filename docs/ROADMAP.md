@@ -21,9 +21,10 @@ Work order:
 6. [x] Add status, wait, logs, exec, HTTP access, tunnel, prune, and destroy.
 7. [x] Run local tests and build the complete VM image.
 8. [x] Add a Lima provider to prove the design is not tied to exe.dev.
-9. [x] Complete one live local VM proof.
-10. [ ] Publish an immutable exe.dev VM image.
-11. [ ] Complete one live exe.dev VM proof.
+9. [x] Complete the first live local environment proof.
+10. [ ] Prove a smaller investigation resource profile under a real workload.
+11. [ ] Publish an immutable exe.dev VM image.
+12. [ ] Complete one live exe.dev environment proof.
 
 ## Later
 
@@ -33,5 +34,5 @@ Work order:
 - Local patch upload.
 - Snapshots, warm pools, pause, and resume.
 - GitHub webhook automation.
-- More hosted VM providers.
+- More hosted environment providers.
 - Team policy, quotas, audit history, and cost visibility.

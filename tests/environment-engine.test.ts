@@ -81,7 +81,7 @@ class FakeProvider implements EnvironmentProvider {
     return {
       environmentId: record.id,
       provider: "exedev",
-      vmName: "sf-test",
+      resourceName: "sf-test",
       source: record.source,
       resources: { cpu: 4, memoryGb: 8, diskGb: 40 },
       privateGatewayPort: 8080,
@@ -180,7 +180,7 @@ describe("EnvironmentEngine", () => {
     );
 
     expect(updates).toEqual([
-      { state: "provisioning", phase: "provisioning_vm" },
+      { state: "provisioning", phase: "allocating_environment" },
     ]);
   });
 
@@ -230,9 +230,9 @@ describe("EnvironmentEngine", () => {
     expect((await repository.get(active.id)).state).not.toBe("deleted");
   });
 
-  it("can delete a failed local record when no VM was created", async () => {
+  it("can delete a failed record when no provider resource was created", async () => {
     const { engine, provider, repository } = setup();
-    provider.createFailure = new Error("VM creation failed");
+    provider.createFailure = new Error("Environment allocation failed");
     await expect(engine.create("pr:123", { ttlMinutes: 30, dryRun: false, provider: "exedev" })).rejects.toThrow();
     const [failed] = await repository.list();
     if (!failed) throw new Error("Expected failed record");

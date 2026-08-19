@@ -20,19 +20,24 @@ import type {
 } from "../../domain/types.js";
 import type { CommandRunner } from "../../process/command-runner.js";
 import type { EnvironmentProvider } from "../environment-provider.js";
+import { investigationResources } from "../investigation-resources.js";
 
 const platformCommit = "ab6315bd59c58b4815175df4c679107ff9695be4";
 const defaultDashboardTag = "3.23";
 const guestPorts = { gateway: 8080, core: 8000, mailpit: 8025, jaeger: 16686 } as const;
 const services = new Set(["api", "worker", "db", "cache", "dashboard", "gateway", "mailpit", "jaeger"]);
-
-const providerStatusSchema = z.object({
-  state: z.enum(["requested", "provisioning", "ready", "failed", "deleting", "deleted"]),
-  phase: z.enum([
-    "requested", "resolving_source", "provisioning_vm", "building_core",
+const providerPhaseSchema = z.preprocess(
+  (value) => value === "provisioning_vm" ? "allocating_environment" : value,
+  z.enum([
+    "requested", "resolving_source", "allocating_environment", "building_core",
     "migrating_database", "seeding_database", "starting_services",
     "checking_readiness", "ready", "deleting", "deleted", "failed",
   ]),
+);
+
+const providerStatusSchema = z.object({
+  state: z.enum(["requested", "provisioning", "ready", "failed", "deleting", "deleted"]),
+  phase: providerPhaseSchema,
   updatedAt: z.string(),
   commit: z.string().regex(/^[a-f0-9]{40}$/).optional(),
   error: z.string().optional(),
@@ -79,9 +84,9 @@ export class LocalProvider implements EnvironmentProvider {
   private readonly sandboxdBinary: string | undefined;
 
   constructor(private readonly runner: CommandRunner, options: LocalProviderOptions = {}) {
-    this.cpu = options.cpu ?? 4;
-    this.memoryGb = options.memoryGb ?? 8;
-    this.diskGb = options.diskGb ?? 40;
+    this.cpu = options.cpu ?? investigationResources.cpu;
+    this.memoryGb = options.memoryGb ?? investigationResources.memoryGb;
+    this.diskGb = options.diskGb ?? investigationResources.diskGb;
     this.configuredPorts = options.ports;
     this.projectRoot = options.projectRoot ?? resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
     this.sandboxdBinary = options.sandboxdBinary ?? process.env.SALEOR_SANDBOX_LOCAL_SANDBOXD;
@@ -100,7 +105,7 @@ export class LocalProvider implements EnvironmentProvider {
     return {
       environmentId: record.id,
       provider: "local",
-      vmName: this.vmName(record),
+      resourceName: this.vmName(record),
       source: record.source,
       resources: { cpu: this.cpu, memoryGb: this.memoryGb, diskGb: this.diskGb },
       privateGatewayPort: guestPorts.gateway,
@@ -172,14 +177,14 @@ export class LocalProvider implements EnvironmentProvider {
     const environment = requireLocalEnvironment(record);
     const result = await this.runGuest(environment.name, ["sudo", "sandboxd", "status"], 20_000);
     if (result.exitCode !== 0) {
-      return { state: "provisioning", phase: "provisioning_vm", updatedAt: new Date().toISOString() };
+      return { state: "provisioning", phase: "allocating_environment", updatedAt: new Date().toISOString() };
     }
     const parsed = providerStatusSchema.parse(parseJson(result.stdout));
     if (parsed.commit && parsed.commit !== record.source.commit) {
       throw new SandboxError("guest_commit_mismatch", `sandboxd reports ${parsed.commit}, but ${record.source.commit} was requested.`);
     }
     return parsed.state === "requested"
-      ? { state: "provisioning", phase: "provisioning_vm", updatedAt: parsed.updatedAt }
+      ? { state: "provisioning", phase: "allocating_environment", updatedAt: parsed.updatedAt }
       : parsed as ProviderStatus;
   }
 
